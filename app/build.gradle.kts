@@ -50,9 +50,10 @@ dependencies {
     // ViewModel + LiveData
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
+    implementation("androidx.activity:activity-ktx:1.8.2")
 
     // Coroutines (llamadas asíncronas)
-    implementation("kotlinx.coroutines:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // RecyclerView (lista de archivos)
     implementation("androidx.recyclerview:recyclerview:1.3.2")
