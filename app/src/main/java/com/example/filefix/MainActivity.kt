@@ -24,12 +24,22 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        setupToolbar()
         setupRecyclerView()
         setupFab()
         observeViewModel()
         
         // Cargar archivos (intentará API, si no, mostrará vacío o podemos mockear)
         viewModel.loadFiles()
+    }
+
+    private fun setupToolbar() {
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        toolbar.setNavigationOnClickListener {
+            onBackPressedDispatcher.onBackPressed()
+        }
     }
 
     private fun setupRecyclerView() {
@@ -39,18 +49,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun observeViewModel() {
+        val fileScanner = FileScanner(this)
+        val realFiles = fileScanner.getAllFiles()
+        
+        if (realFiles.isEmpty()) {
+            // Si no hay archivos reales, mostramos los dummy solo para que la lista no esté vacía en la demo
+            val dummyFiles = listOf(
+                FileItem("1", "Sin archivos reales.pdf", "PDF", 0, "Demo"),
+                FileItem("2", "Asegúrate de tener archivos.jpg", "Imagen", 0, "Demo")
+            )
+            adapter.updateFiles(dummyFiles)
+        } else {
+            // Mostramos tus archivos reales
+            adapter.updateFiles(realFiles)
+        }
+        
+        // Mantenemos la observación por si usas la API después
         viewModel.files.observe(this) { files ->
-            if (files.isEmpty()) {
-                // Si la API no devuelve nada, podemos inyectar datos de prueba para la demo
-                val dummyFiles = listOf(
-                    FileItem("1", "Documento_Universidad.pdf", "PDF", 2048000, "Normal"),
-                    FileItem("2", "Foto_Vacaciones.jpg", "Imagen", 5120000, "Grande"),
-                    FileItem("3", "Cache_App_Basura.tmp", "Temporal", 102400, "Sugerido para borrar"),
-                    FileItem("4", "Video_Proyecto.mp4", "Video", 102400000, "Grande"),
-                    FileItem("5", "Apuntes_Clase.docx", "Documento", 50000, "Normal")
-                )
-                adapter.updateFiles(dummyFiles)
-            } else {
+            if (files.isNotEmpty()) {
                 adapter.updateFiles(files)
             }
         }
