@@ -28,10 +28,9 @@ class FileViewModel(private val repository: FileRepository) : ViewModel() {
     // Lógica básica del Bot de optimización
     fun optimizeFiles() {
         viewModelScope.launch {
-            // Ejemplo: Sugerir borrar archivos temporales o muy grandes
             val currentFiles = _files.value ?: emptyList()
             val optimized = currentFiles.filter { it.status != "Sugerido para borrar" }
-            _files.value = optimized
+            _files.postValue(optimized)
         }
     }
 }
