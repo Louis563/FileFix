@@ -13,6 +13,10 @@ import androidx.appcompat.app.AppCompatActivity
 
 import android.widget.TextView
 
+import android.os.StatFs
+import android.widget.ProgressBar
+import java.io.File
+
 class DashboardActivity : AppCompatActivity() {
 
     private lateinit var fileScanner: FileScanner
@@ -24,11 +28,56 @@ class DashboardActivity : AppCompatActivity() {
         fileScanner = FileScanner(this)
         setupClickListeners()
         checkPermissions()
+        updateStorageInfo()
     }
 
     override fun onResume() {
         super.onResume()
         updateFileCounts()
+        updateStorageInfo()
+    }
+
+    private fun updateStorageInfo() {
+        try {
+            // Obtenemos las estadísticas del almacenamiento raíz (root) que suele ser el más completo
+            val path = Environment.getExternalStorageDirectory()
+            val stat = StatFs(path.path)
+            
+            val totalBytes = stat.totalBytes
+            val availableBytes = stat.availableBytes
+            val usedBytes = totalBytes - availableBytes
+
+            // Convertimos a GB (1024^3)
+            var usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0)
+            var totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
+
+            // AJUSTE PARA DISPOSITIVOS CON PARTICIÓN DE SISTEMA OCULTA
+            // En muchos Android, el 'totalBytes' reportado excluye el sistema operativo (ej: reporta 108 en lugar de 128)
+            // Si el total reportado es cercano a potencias comunes (32, 64, 128), ajustamos el total y sumamos la diferencia al usado
+            val realTotal = when {
+                totalGB > 100 && totalGB < 128 -> 128.0
+                totalGB > 50 && totalGB < 64 -> 64.0
+                totalGB > 25 && totalGB < 32 -> 32.0
+                else -> totalGB
+            }
+
+            if (realTotal > totalGB) {
+                val systemReserved = realTotal - totalGB
+                usedGB += systemReserved // Sumamos el espacio del sistema al "usado" para que coincida con el móvil
+                totalGB = realTotal
+            }
+
+            findViewById<TextView>(R.id.tvStorageUsed).text = String.format("%.2f GB usada", usedGB)
+            findViewById<TextView>(R.id.tvStorageTotal).text = String.format("%.2f GB total", totalGB)
+
+            val progress = ((usedGB / totalGB) * 100).toInt()
+            findViewById<ProgressBar>(R.id.storageProgressBar).progress = progress
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Fallback si algo falla
+            findViewById<TextView>(R.id.tvStorageUsed).text = "Error"
+        }
     }
 
     private fun updateFileCounts() {
@@ -37,6 +86,7 @@ class DashboardActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.tvVideoCount).text = fileScanner.countVideos().toString()
             findViewById<TextView>(R.id.tvImageCount).text = fileScanner.countImages().toString()
             findViewById<TextView>(R.id.tvDocCount).text = fileScanner.countDocuments().toString()
+            findViewById<TextView>(R.id.tvDownloadCount).text = "2" // Mock por ahora
         }
     }
 
@@ -46,9 +96,11 @@ class DashboardActivity : AppCompatActivity() {
             navigateToMain()
         }
 
-        val btnStorage = findViewById<LinearLayout>(R.id.llStorage)
-        btnStorage.setOnClickListener {
-            navigateToMain()
+        val btnOptimize = findViewById<LinearLayout>(R.id.llOptimizeCategory)
+        btnOptimize.setOnClickListener {
+            // Ir a la pantalla de progreso de limpieza
+            val intent = Intent(this, CleaningProgressActivity::class.java)
+            startActivity(intent)
         }
     }
 
