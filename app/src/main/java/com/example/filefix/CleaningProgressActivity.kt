@@ -7,12 +7,14 @@ import android.os.Looper
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.*
+
 class CleaningProgressActivity : AppCompatActivity() {
 
     private lateinit var tvStatus: TextView
     private lateinit var tvPercentage: TextView
-    private var progress = 0
-    private val handler = Handler(Looper.getMainLooper())
+    private val cleaningManager = CleaningManager()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -21,37 +23,49 @@ class CleaningProgressActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvProgressStatus)
         tvPercentage = findViewById(R.id.tvProgressPercentage)
 
-        startSimulatedCleaning()
+        startRealCleaning()
     }
 
-    private fun startSimulatedCleaning() {
+    private fun startRealCleaning() {
         val statuses = arrayOf(
             "Analizando caché de aplicaciones...",
             "Buscando archivos temporales...",
             "Identificando carpetas vacías...",
-            "Limpiando basura del sistema...",
-            "Finalizando optimización..."
+            "Calculando espacio recuperable...",
+            "Finalizando escaneo..."
         )
 
-        val runnable = object : Runnable {
-            override fun run() {
-                if (progress <= 100) {
-                    tvPercentage.text = "$progress%"
-                    
-                    // Cambiar el mensaje de estado según el progreso
-                    val statusIndex = (progress / 21).coerceAtMost(statuses.size - 1)
-                    tvStatus.text = statuses[statusIndex]
-
-                    progress += 2
-                    handler.postDelayed(this, 50) // Simular velocidad de escaneo
-                } else {
-                    // Al terminar, ir a la pantalla de resultados (Pantalla 4)
-                    val intent = Intent(this@CleaningProgressActivity, MainActivity::class.java) // Temporalmente a Main
-                    startActivity(intent)
-                    finish()
-                }
+        lifecycleScope.launch {
+            // Ejecutar escaneo real en segundo plano
+            val scanTask = async(Dispatchers.IO) {
+                cleaningManager.findJunkFiles()
             }
+
+            // Animación visual suave de 0 a 99%
+            for (progress in 0..99) {
+                tvPercentage.text = "$progress%"
+                val statusIndex = (progress / 20).coerceAtMost(statuses.size - 1)
+                tvStatus.text = statuses[statusIndex]
+                
+                // Si el escaneo es muy rápido, forzamos un mínimo de visualización
+                delay(30)
+            }
+
+            // Esperar al resultado real
+            val junkFiles = scanTask.await()
+            val totalSize = junkFiles.sumOf { if (it.isDirectory) 0L else it.length() }
+
+            // Finalizar
+            tvPercentage.text = "100%"
+            tvStatus.text = "¡Escaneo completado!"
+            delay(500)
+
+            // Pasar datos a la pantalla de resultados
+            ResultsActivity.filesToDelete = junkFiles
+            ResultsActivity.totalSizeToClean = totalSize
+
+            startActivity(Intent(this@CleaningProgressActivity, ResultsActivity::class.java))
+            finish()
         }
-        handler.post(runnable)
     }
 }

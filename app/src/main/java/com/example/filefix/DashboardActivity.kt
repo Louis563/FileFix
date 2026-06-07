@@ -1,5 +1,6 @@
 package com.example.filefix
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -86,14 +87,33 @@ class DashboardActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.tvVideoCount).text = fileScanner.countVideos().toString()
             findViewById<TextView>(R.id.tvImageCount).text = fileScanner.countImages().toString()
             findViewById<TextView>(R.id.tvDocCount).text = fileScanner.countDocuments().toString()
-            findViewById<TextView>(R.id.tvDownloadCount).text = "2" // Mock por ahora
+            findViewById<TextView>(R.id.tvAppsCount).text = fileScanner.countApps().toString()
+            findViewById<TextView>(R.id.tvDownloadCount).text = fileScanner.countDownloads().toString()
         }
     }
 
     private fun setupClickListeners() {
+        val etSearch = findViewById<android.widget.EditText>(R.id.etSearch)
+        etSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                val query = etSearch.text.toString()
+                if (query.isNotEmpty()) {
+                    navigateToSearch(query)
+                }
+                true
+            } else false
+        }
+
+        findViewById<LinearLayout>(R.id.llAudio).setOnClickListener { navigateToMain("AUDIO") }
+        findViewById<LinearLayout>(R.id.llVideos).setOnClickListener { navigateToMain("VIDEO") }
+        findViewById<LinearLayout>(R.id.llImages).setOnClickListener { navigateToMain("IMAGE") }
+        findViewById<LinearLayout>(R.id.llApps).setOnClickListener { navigateToMain("APPS") }
+        findViewById<LinearLayout>(R.id.llDocs).setOnClickListener { navigateToMain("DOCS") }
+        findViewById<LinearLayout>(R.id.llDownloads).setOnClickListener { navigateToMain("DOWNLOADS") }
+
         val btnAllFiles = findViewById<LinearLayout>(R.id.llAllFiles)
         btnAllFiles.setOnClickListener {
-            navigateToMain()
+            navigateToMain("ALL")
         }
 
         val btnOptimize = findViewById<LinearLayout>(R.id.llOptimizeCategory)
@@ -104,9 +124,21 @@ class DashboardActivity : AppCompatActivity() {
         }
     }
 
-    private fun navigateToMain() {
+    private fun navigateToSearch(query: String) {
         if (hasManageExternalStoragePermission()) {
             val intent = Intent(this, MainActivity::class.java)
+            intent.putExtra("CATEGORY", "SEARCH")
+            intent.putExtra("QUERY", query)
+            startActivity(intent)
+        } else {
+            requestManageExternalStoragePermission()
+        }
+    }
+
+    private fun navigateToMain(category: String = "ALL") {
+        if (hasManageExternalStoragePermission()) {
+            val intent = Intent(this, MainActivity::class.java)
+            intent.putExtra("CATEGORY", category)
             startActivity(intent)
         } else {
             requestManageExternalStoragePermission()
@@ -152,5 +184,29 @@ class DashboardActivity : AppCompatActivity() {
         if (!hasManageExternalStoragePermission()) {
             Toast.makeText(this, "Se requiere permiso para gestionar archivos", Toast.LENGTH_LONG).show()
         }
+        if (!hasUsageStatsPermission()) {
+            showUsageStatsDialog()
+        }
+    }
+
+    private fun hasUsageStatsPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        } else {
+            appOps.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        }
+        return mode == android.app.AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun showUsageStatsDialog() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Permiso necesario")
+            .setMessage("Para el correcto funcionamiento de la gestión de aplicaciones, se requiere el permiso de acceso a datos de uso.")
+            .setPositiveButton("Configurar") { _, _ ->
+                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 }

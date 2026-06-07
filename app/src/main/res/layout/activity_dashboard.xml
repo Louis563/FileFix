@@ -43,6 +43,9 @@
             android:hint="Buscar Archivos"
             android:paddingStart="15dp"
             android:textColorHint="#888888"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
             app:layout_constraintTop_toBottomOf="@id/tvTitle" />
         ​
         <GridLayout
@@ -57,9 +60,12 @@
             <!-- Fila 1 -->
             <!-- Audio -->
             <LinearLayout
+                android:id="@+id/llAudio"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="8dp">
@@ -84,9 +90,12 @@
 
             <!-- Videos -->
             <LinearLayout
+                android:id="@+id/llVideos"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="8dp">
@@ -111,9 +120,12 @@
 
             <!-- Imágenes -->
             <LinearLayout
+                android:id="@+id/llImages"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="8dp">
@@ -138,26 +150,29 @@
 
             <!-- Aplicaciones -->
             <LinearLayout
+                android:id="@+id/llApps"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="8dp">
                 <ImageView
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:src="@android:drawable/sym_def_app_icon"
-                    app:tint="#66BB6A" />
+                    android:src="@drawable/ic_apps" />
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Apps"
                     android:textColor="#FFFFFF" />
                 <TextView
+                    android:id="@+id/tvAppsCount"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="2"
+                    android:text="0"
                     android:textColor="#888888"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -167,9 +182,12 @@
 
             <!-- Documentos -->
             <LinearLayout
+                android:id="@+id/llDocs"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:padding="8dp">
