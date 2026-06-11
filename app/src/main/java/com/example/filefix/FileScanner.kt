@@ -28,6 +28,12 @@ class FileScanner(private val context: Context) {
         return queryCount(MediaStore.Files.getContentUri("external"), projection, selection, null)
     }
 
+    fun countApks(): Int {
+        val projection = arrayOf(MediaStore.Files.FileColumns._ID)
+        val selection = "${MediaStore.Files.FileColumns.DATA} LIKE '%.apk'"
+        return queryCount(MediaStore.Files.getContentUri("external"), projection, selection, null)
+    }
+
     fun countApps(): Int {
         val pm = context.packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)

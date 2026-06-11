@@ -25,6 +25,10 @@ class FileViewModel(private val repository: FileRepository) : ViewModel() {
         }
     }
 
+    fun setFiles(fileList: List<FileItem>) {
+        _files.value = fileList
+    }
+
     // Lógica básica del Bot de optimización
     fun optimizeFiles() {
         viewModelScope.launch {

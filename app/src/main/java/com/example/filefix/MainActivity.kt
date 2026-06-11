@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         setupBackCallback()
         
-        val category = intent.getStringExtra("CATEGORY") ?: "ALL"
+        val category = intent.getStringExtra("CATEGORY_FILTER") ?: "ALL"
         if (category == "ALL") {
             loadCurrentDirectory()
         } else if (category == "SEARCH") {
