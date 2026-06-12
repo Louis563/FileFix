@@ -79,22 +79,10 @@ class DashboardActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.tvImageCount).text = fileScanner.countImages().toString()
             findViewById<TextView>(R.id.tvDocCount).text = fileScanner.countDocuments().toString()
             findViewById<TextView>(R.id.tvAppsCount).text = fileScanner.countApps().toString()
-            findViewById<TextView>(R.id.tvDownloadCount).text = fileScanner.countDownloads().toString()
         }
     }
 
     private fun setupClickListeners() {
-        val etSearch = findViewById<android.widget.EditText>(R.id.etSearch)
-        etSearch.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
-                val query = etSearch.text.toString()
-                if (query.isNotEmpty()) {
-                    navigateToSearch(query)
-                }
-                true
-            } else false
-        }
-
         findViewById<LinearLayout>(R.id.llAudio).setOnClickListener { navigateToMain("AUDIO") }
         findViewById<LinearLayout>(R.id.llVideos).setOnClickListener { navigateToMain("VIDEO") }
         findViewById<LinearLayout>(R.id.llImages).setOnClickListener { navigateToMain("IMAGE") }
@@ -104,7 +92,7 @@ class DashboardActivity : AppCompatActivity() {
 
         findViewById<LinearLayout>(R.id.llAllFiles).setOnClickListener { navigateToMain("ALL") }
 
-        findViewById<LinearLayout>(R.id.llOptimizeCategory).setOnClickListener {
+        findViewById<android.view.View>(R.id.llOptimizeCategoryMain).setOnClickListener {
             if (hasManageExternalStoragePermission()) {
                 startActivity(Intent(this, CleaningProgressActivity::class.java))
             } else {
