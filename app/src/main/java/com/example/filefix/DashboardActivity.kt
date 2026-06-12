@@ -189,7 +189,7 @@ class DashboardActivity : AppCompatActivity() {
             .setTitle("Permiso necesario")
             .setMessage("Para el correcto funcionamiento de la gestión de aplicaciones, se requiere el permiso de acceso a datos de uso.")
             .setPositiveButton("Configurar") { _, _ ->
-                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
             }
             .setNegativeButton("Cancelar", null)
             .show()
