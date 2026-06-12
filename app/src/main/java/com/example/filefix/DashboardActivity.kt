@@ -1,5 +1,6 @@
 package com.example.filefix
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -15,6 +16,7 @@ import android.widget.TextView
 
 import android.os.StatFs
 import android.widget.ProgressBar
+import java.io.File
 
 class DashboardActivity : AppCompatActivity() {
 
@@ -38,6 +40,7 @@ class DashboardActivity : AppCompatActivity() {
 
     private fun updateStorageInfo() {
         try {
+            // Obtenemos las estadísticas del almacenamiento raíz (root) que suele ser el más completo
             val path = Environment.getExternalStorageDirectory()
             val stat = StatFs(path.path)
             
@@ -45,9 +48,13 @@ class DashboardActivity : AppCompatActivity() {
             val availableBytes = stat.availableBytes
             val usedBytes = totalBytes - availableBytes
 
+            // Convertimos a GB (1024^3)
             var usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0)
             var totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
 
+            // AJUSTE PARA DISPOSITIVOS CON PARTICIÓN DE SISTEMA OCULTA
+            // En muchos Android, el 'totalBytes' reportado excluye el sistema operativo (ej: reporta 108 en lugar de 128)
+            // Si el total reportado es cercano a potencias comunes (32, 64, 128), ajustamos el total y sumamos la diferencia al usado
             val realTotal = when {
                 totalGB > 100 && totalGB < 128 -> 128.0
                 totalGB > 50 && totalGB < 64 -> 64.0
@@ -57,7 +64,7 @@ class DashboardActivity : AppCompatActivity() {
 
             if (realTotal > totalGB) {
                 val systemReserved = realTotal - totalGB
-                usedGB += systemReserved
+                usedGB += systemReserved // Sumamos el espacio del sistema al "usado" para que coincida con el móvil
                 totalGB = realTotal
             }
 
@@ -69,6 +76,8 @@ class DashboardActivity : AppCompatActivity() {
 
         } catch (e: Exception) {
             e.printStackTrace()
+            // Fallback si algo falla
+            findViewById<TextView>(R.id.tvStorageUsed).text = "Error"
         }
     }
 
@@ -78,59 +87,48 @@ class DashboardActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.tvVideoCount).text = fileScanner.countVideos().toString()
             findViewById<TextView>(R.id.tvImageCount).text = fileScanner.countImages().toString()
             findViewById<TextView>(R.id.tvDocCount).text = fileScanner.countDocuments().toString()
-            findViewById<TextView>(R.id.tvAppsCount).text = fileScanner.countApks().toString()
+            findViewById<TextView>(R.id.tvAppsCount).text = fileScanner.countApps().toString()
         }
     }
 
     private fun setupClickListeners() {
-        val btnAllFiles = findViewById<LinearLayout>(R.id.llAllFiles)
-        btnAllFiles.setOnClickListener {
-            navigateToCategory("ALL")
+        findViewById<LinearLayout>(R.id.llAudio).setOnClickListener { navigateToMain("AUDIO") }
+        findViewById<LinearLayout>(R.id.llVideos).setOnClickListener { navigateToMain("VIDEO") }
+        findViewById<LinearLayout>(R.id.llImages).setOnClickListener { navigateToMain("IMAGE") }
+        findViewById<LinearLayout>(R.id.llApps).setOnClickListener { navigateToMain("APPS") }
+        findViewById<LinearLayout>(R.id.llDocs).setOnClickListener { navigateToMain("DOCS") }
+        findViewById<LinearLayout>(R.id.llDownloads).setOnClickListener { navigateToMain("DOWNLOADS") }
+
+        findViewById<LinearLayout>(R.id.llAllFiles).setOnClickListener {
+            navigateToMain("ALL")
         }
 
-        val btnAudio = findViewById<LinearLayout>(R.id.llAudio)
-        btnAudio.setOnClickListener { navigateToCategory("AUDIO") }
-
-        val btnVideos = findViewById<LinearLayout>(R.id.llVideos)
-        btnVideos.setOnClickListener { navigateToCategory("VIDEO") }
-
-        val btnImages = findViewById<LinearLayout>(R.id.llImages)
-        btnImages.setOnClickListener { navigateToCategory("IMAGE") }
-
-        val btnApps = findViewById<LinearLayout>(R.id.llApps)
-        btnApps.setOnClickListener { navigateToCategory("APPS") }
-
-        val btnDocs = findViewById<LinearLayout>(R.id.llDocs)
-        btnDocs.setOnClickListener { navigateToCategory("DOCS") }
-
-        val btnDownloads = findViewById<LinearLayout>(R.id.llDownloads)
-        btnDownloads.setOnClickListener { navigateToCategory("DOWNLOADS") }
-
-        val btnStorageInfo = findViewById<LinearLayout>(R.id.llStorageInfo)
-        btnStorageInfo.setOnClickListener {
-            val intent = Intent(this, CleaningProgressActivity::class.java)
-            startActivity(intent)
-        }
-
-        val btnOptimize = findViewById<android.view.View>(R.id.llOptimizeCategory)
-        btnOptimize.setOnClickListener {
+        findViewById<android.view.View>(R.id.llOptimizeCategoryMain).setOnClickListener {
+            // Ir a la pantalla de progreso de limpieza
             val intent = Intent(this, CleaningProgressActivity::class.java)
             startActivity(intent)
         }
     }
 
-    private fun navigateToCategory(category: String) {
+    private fun navigateToSearch(query: String) {
         if (hasManageExternalStoragePermission()) {
             val intent = Intent(this, MainActivity::class.java)
-            intent.putExtra("CATEGORY_FILTER", category)
+            intent.putExtra("CATEGORY", "SEARCH")
+            intent.putExtra("QUERY", query)
             startActivity(intent)
         } else {
             requestManageExternalStoragePermission()
         }
     }
 
-    private fun navigateToMain() {
-        navigateToCategory("ALL")
+    private fun navigateToMain(category: String = "ALL") {
+        if (hasManageExternalStoragePermission()) {
+            val intent = Intent(this, MainActivity::class.java)
+            intent.putExtra("CATEGORY", category)
+            startActivity(intent)
+        } else {
+            requestManageExternalStoragePermission()
+        }
     }
 
     private fun hasManageExternalStoragePermission(): Boolean {
@@ -172,5 +170,29 @@ class DashboardActivity : AppCompatActivity() {
         if (!hasManageExternalStoragePermission()) {
             Toast.makeText(this, "Se requiere permiso para gestionar archivos", Toast.LENGTH_LONG).show()
         }
+        if (!hasUsageStatsPermission()) {
+            showUsageStatsDialog()
+        }
+    }
+
+    private fun hasUsageStatsPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        } else {
+            appOps.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        }
+        return mode == android.app.AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun showUsageStatsDialog() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Permiso necesario")
+            .setMessage("Para el correcto funcionamiento de la gestión de aplicaciones, se requiere el permiso de acceso a datos de uso.")
+            .setPositiveButton("Configurar") { _, _ ->
+                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 }

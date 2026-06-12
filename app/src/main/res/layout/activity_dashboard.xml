@@ -14,8 +14,8 @@
 
         <TextView
             android:id="@+id/tvTitle"
-            android:layout_width="136dp"
-            android:layout_height="25dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="FileFix"
             android:textColor="#FFFFFF"
             android:textSize="24sp"
@@ -25,10 +25,10 @@
 
         <!-- Botón de Optimización Central y Grande -->
         <FrameLayout
-            android:id="@+id/llOptimizeCategory"
+            android:id="@+id/llOptimizeCategoryMain"
             android:layout_width="220dp"
             android:layout_height="220dp"
-            android:layout_marginTop="40dp"
+            android:layout_marginTop="60dp"
             android:background="@drawable/circle_optimize_bg"
             android:clickable="true"
             android:focusable="true"
@@ -71,10 +71,10 @@
             android:id="@+id/gridLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="40dp"
+            android:layout_marginTop="60dp"
             android:columnCount="4"
             android:rowCount="2"
-            app:layout_constraintTop_toBottomOf="@id/llOptimizeCategory">
+            app:layout_constraintTop_toBottomOf="@id/llOptimizeCategoryMain">
 
             <!-- Fila 1 -->
             <!-- Audio -->
@@ -310,7 +310,7 @@
                 app:tint="#888888" />
         </LinearLayout>
 
-        <!-- Barra de Almacenamiento (Sustituye a llStorage) -->
+        <!-- Barra de Almacenamiento -->
         <LinearLayout
             android:id="@+id/llStorageInfo"
             android:layout_width="match_parent"
@@ -352,5 +352,6 @@
                 android:progressDrawable="@drawable/storage_progress_bg" />
 
         </LinearLayout>
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.core.widget.NestedScrollView>
