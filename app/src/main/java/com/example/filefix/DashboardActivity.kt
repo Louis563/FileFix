@@ -11,9 +11,7 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-
 import android.widget.TextView
-
 import android.os.StatFs
 import android.widget.ProgressBar
 import java.io.File
@@ -40,7 +38,6 @@ class DashboardActivity : AppCompatActivity() {
 
     private fun updateStorageInfo() {
         try {
-            // Obtenemos las estadísticas del almacenamiento raíz (root) que suele ser el más completo
             val path = Environment.getExternalStorageDirectory()
             val stat = StatFs(path.path)
             
@@ -48,13 +45,9 @@ class DashboardActivity : AppCompatActivity() {
             val availableBytes = stat.availableBytes
             val usedBytes = totalBytes - availableBytes
 
-            // Convertimos a GB (1024^3)
             var usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0)
             var totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
 
-            // AJUSTE PARA DISPOSITIVOS CON PARTICIÓN DE SISTEMA OCULTA
-            // En muchos Android, el 'totalBytes' reportado excluye el sistema operativo (ej: reporta 108 en lugar de 128)
-            // Si el total reportado es cercano a potencias comunes (32, 64, 128), ajustamos el total y sumamos la diferencia al usado
             val realTotal = when {
                 totalGB > 100 && totalGB < 128 -> 128.0
                 totalGB > 50 && totalGB < 64 -> 64.0
@@ -64,7 +57,7 @@ class DashboardActivity : AppCompatActivity() {
 
             if (realTotal > totalGB) {
                 val systemReserved = realTotal - totalGB
-                usedGB += systemReserved // Sumamos el espacio del sistema al "usado" para que coincida con el móvil
+                usedGB += systemReserved
                 totalGB = realTotal
             }
 
@@ -76,8 +69,6 @@ class DashboardActivity : AppCompatActivity() {
 
         } catch (e: Exception) {
             e.printStackTrace()
-            // Fallback si algo falla
-            findViewById<TextView>(R.id.tvStorageUsed).text = "Error"
         }
     }
 
@@ -88,10 +79,22 @@ class DashboardActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.tvImageCount).text = fileScanner.countImages().toString()
             findViewById<TextView>(R.id.tvDocCount).text = fileScanner.countDocuments().toString()
             findViewById<TextView>(R.id.tvAppsCount).text = fileScanner.countApps().toString()
+            findViewById<TextView>(R.id.tvDownloadCount).text = fileScanner.countDownloads().toString()
         }
     }
 
     private fun setupClickListeners() {
+        val etSearch = findViewById<android.widget.EditText>(R.id.etSearch)
+        etSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                val query = etSearch.text.toString()
+                if (query.isNotEmpty()) {
+                    navigateToSearch(query)
+                }
+                true
+            } else false
+        }
+
         findViewById<LinearLayout>(R.id.llAudio).setOnClickListener { navigateToMain("AUDIO") }
         findViewById<LinearLayout>(R.id.llVideos).setOnClickListener { navigateToMain("VIDEO") }
         findViewById<LinearLayout>(R.id.llImages).setOnClickListener { navigateToMain("IMAGE") }
@@ -99,14 +102,14 @@ class DashboardActivity : AppCompatActivity() {
         findViewById<LinearLayout>(R.id.llDocs).setOnClickListener { navigateToMain("DOCS") }
         findViewById<LinearLayout>(R.id.llDownloads).setOnClickListener { navigateToMain("DOWNLOADS") }
 
-        findViewById<LinearLayout>(R.id.llAllFiles).setOnClickListener {
-            navigateToMain("ALL")
-        }
+        findViewById<LinearLayout>(R.id.llAllFiles).setOnClickListener { navigateToMain("ALL") }
 
-        findViewById<android.view.View>(R.id.llOptimizeCategoryMain).setOnClickListener {
-            // Ir a la pantalla de progreso de limpieza
-            val intent = Intent(this, CleaningProgressActivity::class.java)
-            startActivity(intent)
+        findViewById<LinearLayout>(R.id.llOptimizeCategory).setOnClickListener {
+            if (hasManageExternalStoragePermission()) {
+                startActivity(Intent(this, CleaningProgressActivity::class.java))
+            } else {
+                requestManageExternalStoragePermission()
+            }
         }
     }
 
@@ -135,7 +138,6 @@ class DashboardActivity : AppCompatActivity() {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Environment.isExternalStorageManager()
         } else {
-            // Para versiones anteriores, podrías chequear READ/WRITE_EXTERNAL_STORAGE
             true
         }
     }
@@ -152,17 +154,14 @@ class DashboardActivity : AppCompatActivity() {
                 storageActivityResultLauncher.launch(intent)
             }
         } else {
-            // Lógica para Android 10 o inferior si fuera necesario
-            Toast.makeText(this, "Permiso concedido (Versión anterior)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Permiso concedido", Toast.LENGTH_SHORT).show()
         }
     }
 
     private val storageActivityResultLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (hasManageExternalStoragePermission()) {
-                Toast.makeText(this, "Permiso de almacenamiento concedido", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Permiso de almacenamiento denegado", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Permiso concedido", Toast.LENGTH_SHORT).show()
             }
         }
 

@@ -5,79 +5,108 @@ import java.io.File
 
 class CleaningManager {
 
-    /**
-     * Busca archivos considerados "basura":
-     * - Archivos en carpetas de caché.
-     * - Archivos temporales (.tmp).
-     * - Carpetas vacías (opcional).
-     */
+    private val junkExtensions = setOf("tmp", "log", "cache", "temp", "apk_temp", "old", "bak", "thumbdata")
+    private val junkFolderNames = setOf("cache", "temp", "logs", ".thumbnails")
+
+    private val protectedExtensions = setOf(
+        "jpg", "jpeg", "png", "webp", "gif", "bmp",
+        "mp4", "mkv", "mov", "avi", "3gp",
+        "mp3", "wav", "ogg", "flac", "m4a",
+        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt",
+        "zip", "rar", "7z"
+    )
+
     fun findJunkFiles(): List<File> {
-        val junkList = mutableListOf<File>()
-        
-        // Escanear almacenamiento externo para simular búsqueda de basura
-        val externalStorage = Environment.getExternalStorageDirectory()
-        scanDirectoryForJunk(externalStorage, junkList)
-        
-        return junkList
+        val junkFiles = mutableListOf<File>()
+        val root = Environment.getExternalStorageDirectory()
+        scanDirectory(root, junkFiles)
+        return junkFiles
     }
 
-    private fun scanDirectoryForJunk(directory: File, junkList: MutableList<File>) {
+    private fun scanDirectory(directory: File, junkList: MutableList<File>) {
         val files = directory.listFiles() ?: return
         
         for (file in files) {
+            val name = file.name.lowercase()
+            
             if (file.isDirectory) {
-                // Si es una carpeta de caché conocida
-                if (file.name.equals("cache", ignoreCase = true) || 
-                    file.name.equals(".cache", ignoreCase = true)) {
-                    junkList.add(file)
+                if (file.name == "Android") continue
+
+                // Si es una carpeta de basura como .thumbnails o cache, limpiamos TODO su contenido
+                if (junkFolderNames.contains(name)) {
+                    cleanAllInside(file, junkList)
                 } else {
-                    // Limitar profundidad para evitar lentitud extrema en la demo
-                    if (!file.isHidden) {
-                        scanDirectoryForJunk(file, junkList)
-                    }
+                    scanDirectory(file, junkList)
                 }
             } else {
-                // Si es un archivo temporal
-                if (file.extension.equals("tmp", ignoreCase = true) || 
-                    file.name.startsWith(".tmp")) {
+                if (isJunkFile(file)) {
                     junkList.add(file)
                 }
             }
-            // Limitar a 100 archivos para la demo
-            if (junkList.size > 100) break
         }
     }
 
     /**
-     * Elimina físicamente los archivos y devuelve el espacio total liberado.
+     * Esta función añade TODO el contenido de una carpeta a la lista de limpieza,
+     * ignorando la lista de extensiones protegidas porque sabemos que esta carpeta es 100% basura.
      */
-    fun deleteFiles(files: List<File>): Long {
-        var totalDeleted: Long = 0
+    private fun cleanAllInside(directory: File, junkList: MutableList<File>) {
+        val files = directory.listFiles() ?: return
         for (file in files) {
-            val size = if (file.isDirectory) getFolderSize(file) else file.length()
-            if (deleteRecursive(file)) {
-                totalDeleted += size
+            if (file.isDirectory) {
+                cleanAllInside(file, junkList)
+                junkList.add(file)
+            } else {
+                // Aquí no preguntamos si es protegido, si está en .thumbnails o cache, se va.
+                junkList.add(file)
             }
         }
-        return totalDeleted
     }
 
-    private fun deleteRecursive(file: File): Boolean {
-        if (file.isDirectory) {
-            file.listFiles()?.forEach { deleteRecursive(it) }
+    private fun isJunkFile(file: File): Boolean {
+        val name = file.name.lowercase()
+        val extension = file.extension.lowercase()
+        
+        // REGLA DE ORO 1: Si se llama .nomedia, ES SAGRADO (evita que la basura salga en la galería)
+        if (name == ".nomedia") {
+            return false
         }
-        return try {
-            file.delete()
-        } catch (e: Exception) {
-            false
+
+        // REGLA DE ORO 2: Si la extensión es de un archivo personal, NO TOCAR
+        if (protectedExtensions.contains(extension)) {
+            return false
         }
+
+        if (name.startsWith(".thumbdata") || extension.contains("thumbdata")) {
+            return true
+        }
+
+        if (junkExtensions.contains(extension)) {
+            return true
+        }
+
+        if (name.startsWith(".") && file.length() < 2048) {
+            return true
+        }
+
+        return false
     }
 
-    private fun getFolderSize(file: File): Long {
-        var size: Long = 0
-        file.listFiles()?.forEach {
-            size += if (it.isDirectory) getFolderSize(it) else it.length()
+    fun deleteFiles(files: List<File>): Long {
+        var totalDeletedSpace = 0L
+        // Ordenamos para borrar archivos primero y carpetas después
+        val sortedFiles = files.sortedWith(compareBy({ !it.isDirectory }, { it.absolutePath.length }))
+        
+        for (file in sortedFiles) {
+            if (!file.isDirectory) {
+                val size = file.length()
+                if (file.delete()) {
+                    totalDeletedSpace += size
+                }
+            } else {
+                file.delete() // Borrar carpeta si está vacía
+            }
         }
-        return size
+        return totalDeletedSpace
     }
 }

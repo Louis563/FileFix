@@ -10,5 +10,6 @@ data class FileItem(
     val status: String,
     val uri: Uri? = null,
     val isDirectory: Boolean = false,
-    val path: String = ""
+    val path: String = "",
+    val dateModified: Long = 0L
 )

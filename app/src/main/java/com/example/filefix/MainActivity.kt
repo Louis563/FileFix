@@ -3,6 +3,8 @@ package com.example.filefix
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -27,6 +29,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var adapter: FileAdapter
     private var currentPath: String = Environment.getExternalStorageDirectory().absolutePath
+    private var currentFiles: List<FileItem> = emptyList()
+    private var currentSortMode: Int = R.id.sort_default
+
     private val viewModel: FileViewModel by viewModels {
         FileViewModelFactory(FileRepository(ApiClient.apiService))
     }
@@ -41,24 +46,56 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         setupBackCallback()
         
-        val category = intent.getStringExtra("CATEGORY_FILTER") ?: "ALL"
-        if (category == "ALL") {
-            loadCurrentDirectory()
-        } else if (category == "SEARCH") {
-            val query = intent.getStringExtra("QUERY") ?: ""
-            loadSearchFiles(query)
-        } else {
-            loadCategoryFiles(category)
+        val category = intent.getStringExtra("CATEGORY") ?: "ALL"
+        when (category) {
+            "ALL" -> loadCurrentDirectory()
+            "SEARCH" -> {
+                val query = intent.getStringExtra("QUERY") ?: ""
+                loadSearchFiles(query)
+            }
+            else -> loadCategoryFiles(category)
         }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        // Si tocamos el botón contenedor "Ordenar por", no hacemos nada a la lista
+        if (item.itemId == R.id.action_sort) return false
+
+        // Marcamos la opción seleccionada y actualizamos el modo
+        item.isChecked = true
+        currentSortMode = item.itemId
+        applySorting()
+        return true
+    }
+
+    private fun applySorting() {
+        if (currentFiles.isEmpty()) return
+
+        val sortedList = when (currentSortMode) {
+            R.id.sort_name_asc -> currentFiles.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            R.id.sort_name_desc -> currentFiles.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })).reversed()
+            R.id.sort_size_asc -> currentFiles.sortedWith(compareBy({ !it.isDirectory }, { it.size }))
+            R.id.sort_size_desc -> currentFiles.sortedWith(compareBy({ !it.isDirectory }, { it.size })).reversed()
+            R.id.sort_date_asc -> currentFiles.sortedWith(compareBy({ !it.isDirectory }, { it.dateModified }))
+            R.id.sort_date_desc -> currentFiles.sortedWith(compareBy({ !it.isDirectory }, { it.dateModified })).reversed()
+            else -> currentFiles // Default
+        }
+        
+        adapter.updateFiles(sortedList)
     }
 
     private fun loadSearchFiles(query: String) {
         lifecycleScope.launch {
             val fileScanner = FileScanner(this@MainActivity)
-            val files = withContext(Dispatchers.IO) {
+            currentFiles = withContext(Dispatchers.IO) {
                 fileScanner.searchFiles(query)
             }
-            adapter.updateFiles(files)
+            applySorting()
             supportActionBar?.title = "Resultados: $query"
         }
     }
@@ -66,10 +103,10 @@ class MainActivity : AppCompatActivity() {
     private fun loadCategoryFiles(category: String) {
         lifecycleScope.launch {
             val fileScanner = FileScanner(this@MainActivity)
-            val files = withContext(Dispatchers.IO) {
+            currentFiles = withContext(Dispatchers.IO) {
                 fileScanner.getFilesByType(category)
             }
-            adapter.updateFiles(files)
+            applySorting()
             supportActionBar?.title = when(category) {
                 "AUDIO" -> "Audios"
                 "VIDEO" -> "Videos"
@@ -146,20 +183,26 @@ class MainActivity : AppCompatActivity() {
     private fun loadCurrentDirectory() {
         lifecycleScope.launch {
             val fileScanner = FileScanner(this@MainActivity)
-            val files = withContext(Dispatchers.IO) {
+            currentFiles = withContext(Dispatchers.IO) {
                 fileScanner.listFiles(currentPath)
             }
-            adapter.updateFiles(files)
+            applySorting()
             supportActionBar?.title = File(currentPath).name.ifEmpty { "Raíz" }
         }
     }
 
     private fun handleBackNavigation() {
+        val category = intent.getStringExtra("CATEGORY") ?: "ALL"
+        if (category != "ALL") {
+            finish()
+            return
+        }
+
         val parentFile = File(currentPath).parentFile
         val rootPath = Environment.getExternalStorageDirectory().absolutePath
         
         if (currentPath == rootPath) {
-            finish() // Salir si estamos en la raíz
+            finish()
         } else if (parentFile != null) {
             currentPath = parentFile.absolutePath
             loadCurrentDirectory()
@@ -169,10 +212,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun observeViewModel() {
-        // Mantenemos la observación por si usas la API después
         viewModel.files.observe(this) { files ->
             if (files.isNotEmpty()) {
-                adapter.updateFiles(files)
+                currentFiles = files
+                applySorting()
             }
         }
     }

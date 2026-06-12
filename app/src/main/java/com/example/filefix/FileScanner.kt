@@ -10,7 +10,6 @@ import android.content.pm.PackageManager
 import android.app.usage.StorageStatsManager
 import android.os.storage.StorageManager
 import android.os.Process
-import java.util.UUID
 
 class FileScanner(private val context: Context) {
 
@@ -80,7 +79,8 @@ class FileScanner(private val context: Context) {
                     status = "Local",
                     uri = null, 
                     isDirectory = isDir,
-                    path = file.absolutePath
+                    path = file.absolutePath,
+                    dateModified = file.lastModified()
                 )
             )
         }
@@ -126,7 +126,8 @@ class FileScanner(private val context: Context) {
             MediaStore.Files.FileColumns.DISPLAY_NAME,
             MediaStore.Files.FileColumns.MIME_TYPE,
             MediaStore.Files.FileColumns.SIZE,
-            MediaStore.Files.FileColumns.DATA
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.DATE_MODIFIED
         )
 
         val selection = "${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE ?"
@@ -138,6 +139,7 @@ class FileScanner(private val context: Context) {
             val mimeColumn = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
             val sizeColumn = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
             val pathColumn = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATA)
+            val dateColumn = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
 
             while (it.moveToNext()) {
                 val id = it.getLong(idColumn)
@@ -145,9 +147,11 @@ class FileScanner(private val context: Context) {
                 val mime = it.getString(mimeColumn) ?: ""
                 val size = it.getLong(sizeColumn)
                 val path = it.getString(pathColumn)
+                val date = it.getLong(dateColumn) * 1000 // MediaStore returns seconds
+                
                 val contentUri = android.content.ContentUris.withAppendedId(uri, id)
 
-                fileList.add(FileItem(id.toString(), name, mime, size, "Local", contentUri, false, path))
+                fileList.add(FileItem(id.toString(), name, mime, size, "Local", contentUri, false, path, date))
             }
         }
         return fileList
@@ -171,7 +175,8 @@ class FileScanner(private val context: Context) {
             MediaStore.Files.FileColumns.DISPLAY_NAME,
             MediaStore.Files.FileColumns.MIME_TYPE,
             MediaStore.Files.FileColumns.SIZE,
-            MediaStore.Files.FileColumns.DATA
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.DATE_MODIFIED
         )
 
         val selection = when (typeFilter) {
@@ -194,6 +199,7 @@ class FileScanner(private val context: Context) {
             val mimeColumn = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
             val sizeColumn = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
             val pathColumn = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATA)
+            val dateColumn = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
 
             while (it.moveToNext()) {
                 val id = it.getLong(idColumn)
@@ -201,10 +207,11 @@ class FileScanner(private val context: Context) {
                 val mime = it.getString(mimeColumn) ?: ""
                 val size = it.getLong(sizeColumn)
                 val path = it.getString(pathColumn)
+                val date = it.getLong(dateColumn) * 1000
                 
                 val contentUri = android.content.ContentUris.withAppendedId(uri, id)
 
-                fileList.add(FileItem(id.toString(), name, mime, size, "Local", contentUri, false, path))
+                fileList.add(FileItem(id.toString(), name, mime, size, "Local", contentUri, false, path, date))
             }
         }
         return fileList
@@ -222,16 +229,15 @@ class FileScanner(private val context: Context) {
             val launchIntent = pm.getLaunchIntentForPackage(app.packageName)
             if (launchIntent != null) {
                 val name = pm.getApplicationLabel(app).toString()
+                val pkgInfo = pm.getPackageInfo(app.packageName, 0)
                 
                 var totalSize = File(app.sourceDir).length()
                 
-                // Intentar obtener el tamaño real (incluyendo datos) si tenemos el permiso
                 if (storageStatsManager != null) {
                     try {
                         val stats = storageStatsManager.queryStatsForPackage(StorageManager.UUID_DEFAULT, app.packageName, user)
                         totalSize = stats.appBytes + stats.dataBytes + stats.cacheBytes
                     } catch (_: Exception) {
-                        // Si no hay permiso o falla, mantenemos el tamaño del APK base
                     }
                 }
                 
@@ -243,7 +249,8 @@ class FileScanner(private val context: Context) {
                     status = "Installed",
                     uri = null,
                     isDirectory = false,
-                    path = app.packageName 
+                    path = app.packageName,
+                    dateModified = pkgInfo.lastUpdateTime
                 ))
             }
         }

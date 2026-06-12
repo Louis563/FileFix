@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_sort"
+        android:title="Ordenar por"
+        android:icon="@android:drawable/ic_menu_sort_by_size"
+        app:showAsAction="ifRoom">
+        <menu>
+            <item
+                android:id="@+id/sort_default"
+                android:title="Por defecto" />
+
+            <group android:id="@+id/group_name" android:checkableBehavior="single">
+                <item
+                    android:id="@+id/sort_name_asc"
+                    android:title="Nombre (A-Z)" />
+                <item
+                    android:id="@+id/sort_name_desc"
+                    android:title="Nombre (Z-A)" />
+            </group>
+
+            <group android:id="@+id/group_size" android:checkableBehavior="single">
+                <item
+                    android:id="@+id/sort_size_desc"
+                    android:title="Tamaño (Mayor a menor)" />
+                <item
+                    android:id="@+id/sort_size_asc"
+                    android:title="Tamaño (Menor a mayor)" />
+            </group>
+
+            <group android:id="@+id/group_date" android:checkableBehavior="single">
+                <item
+                    android:id="@+id/sort_date_desc"
+                    android:title="Fecha (Más nuevo)" />
+                <item
+                    android:id="@+id/sort_date_asc"
+                    android:title="Fecha (Más viejo)" />
+            </group>
+        </menu>
+    </item>
+</menu>
