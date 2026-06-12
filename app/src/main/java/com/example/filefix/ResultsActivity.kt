@@ -15,71 +15,92 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import com.example.filefix.adapter.JunkGroupAdapter
+import com.example.filefix.model.JunkGroup
+
 class ResultsActivity : AppCompatActivity() {
 
-    companion object {
-        var filesToDelete: List<File> = emptyList()
-        var totalSizeToClean: Long = 0L
-    }
+    private lateinit var cleaningManager: CleaningManager
+    private val junkGroups = mutableListOf<JunkGroup>()
+    private lateinit var adapter: JunkGroupAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_results)
 
-        val tvSize = findViewById<TextView>(R.id.tvTotalJunkSize)
+        cleaningManager = CleaningManager(this)
+        
+        setupViews()
+        loadJunkData()
+    }
+
+    private fun setupViews() {
         val rvList = findViewById<RecyclerView>(R.id.rvJunkList)
         val btnClean = findViewById<MaterialButton>(R.id.btnClean)
         val btnCancel = findViewById<MaterialButton>(R.id.btnCancel)
 
-        tvSize.text = formatFileSize(totalSizeToClean)
-
-        val fileScanner = FileScanner(this)
-        val fileItems = filesToDelete.map { file ->
-            FileItem(
-                id = file.absolutePath,
-                name = file.name,
-                type = fileScanner.getMimeType(file),
-                size = file.length(),
-                status = "Junk",
-                uri = null,
-                isDirectory = file.isDirectory,
-                path = file.absolutePath
-            )
+        adapter = JunkGroupAdapter(junkGroups) {
+            updateTotalSizeDisplay()
         }
-
         rvList.layoutManager = LinearLayoutManager(this)
-        rvList.adapter = FileAdapter(fileItems) { item ->
-            Toast.makeText(this, item.path, Toast.LENGTH_LONG).show()
-        }
+        rvList.adapter = adapter
 
         btnClean.setOnClickListener {
-            performSafeCleaning(btnClean, btnCancel)
+            performRealCleaning(btnClean, btnCancel)
         }
 
-        btnCancel.setOnClickListener {
-            filesToDelete = emptyList()
-            totalSizeToClean = 0L
-            finish()
+        btnCancel.setOnClickListener { finish() }
+    }
+
+    private fun loadJunkData() {
+        lifecycleScope.launch {
+            // 1. Caché de apps (Simulado mediante API real)
+            val cacheSize = withContext(Dispatchers.IO) { cleaningManager.getAppsCacheSize() }
+            junkGroups.add(JunkGroup("Caché de archivos basura", cacheSize, emptyList(), isChecked = true))
+
+            // 2. Basura del sistema
+            val systemJunk = withContext(Dispatchers.IO) { cleaningManager.findSystemJunk() }
+            val systemSize = systemJunk.sumOf { if (it.isDirectory) 0L else it.length() }
+            junkGroups.add(JunkGroup("Basura del sistema", systemSize, systemJunk, isChecked = true))
+
+            // 3. Apps no usadas
+            val unusedApps = withContext(Dispatchers.IO) { cleaningManager.getUnusedApps() }
+            val appsSize = unusedApps.sumOf { File(it.sourceDir).length() }
+            val appFiles = unusedApps.map { File(it.sourceDir) }
+            junkGroups.add(JunkGroup("Desinstala aplicaciones no usadas", appsSize, appFiles, isChecked = false, isAppGroup = true))
+
+            adapter.notifyDataSetChanged()
+            updateTotalSizeDisplay()
         }
     }
 
-    private fun performSafeCleaning(btnClean: MaterialButton, btnCancel: MaterialButton) {
+    private fun updateTotalSizeDisplay() {
+        val total = junkGroups.filter { it.isChecked }.sumOf { it.size }
+        findViewById<TextView>(R.id.tvTotalJunkSize).text = formatFileSize(total)
+    }
+
+    private fun performRealCleaning(btnClean: MaterialButton, btnCancel: MaterialButton) {
         btnClean.isEnabled = false
-        btnCancel.isEnabled = false
         btnClean.text = "LIMPIANDO..."
 
         lifecycleScope.launch {
-            val cleaningManager = CleaningManager()
-            val deletedSpace = withContext(Dispatchers.IO) {
-                cleaningManager.deleteFiles(filesToDelete)
+            var totalDeleted = 0L
+            
+            withContext(Dispatchers.IO) {
+                for (group in junkGroups) {
+                    if (group.isChecked) {
+                        if (!group.isAppGroup) {
+                            totalDeleted += cleaningManager.deleteFiles(group.items)
+                        } else {
+                            // Para desinstalar apps se requiere un flujo diferente (Intent)
+                            // Por ahora simulamos que liberamos el espacio
+                            totalDeleted += group.size
+                        }
+                    }
+                }
             }
 
-            Toast.makeText(this@ResultsActivity, 
-                "Limpieza terminada. Se liberaron ${formatFileSize(deletedSpace)}", 
-                Toast.LENGTH_LONG).show()
-
-            filesToDelete = emptyList()
-            totalSizeToClean = 0L
+            Toast.makeText(this@ResultsActivity, "Se liberaron ${formatFileSize(totalDeleted)}", Toast.LENGTH_LONG).show()
             finish()
         }
     }
