@@ -12,5 +12,5 @@ data class FileItem(
     val isDirectory: Boolean = false,
     val path: String = "",
     val dateModified: Long = 0L,
-    var isChecked: Boolean = true
+    var isChecked: Boolean = false
 )

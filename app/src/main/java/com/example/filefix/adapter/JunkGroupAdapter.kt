@@ -33,13 +33,9 @@ class JunkGroupAdapter(
         val group = groups[position]
         holder.tvTitle.text = group.title
         
-        // Función interna para actualizar solo el texto del tamaño del grupo
-        fun updateGroupSizeText() {
-            val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
-            holder.tvSize.text = formatFileSize(selectedSize)
-        }
-
-        updateGroupSizeText()
+        // Actualizar tamaño basado en lo seleccionado
+        val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
+        holder.tvSize.text = formatFileSize(selectedSize)
         
         holder.cbGroup.setOnCheckedChangeListener(null)
         holder.cbGroup.isChecked = group.isChecked
@@ -47,25 +43,18 @@ class JunkGroupAdapter(
         holder.cbGroup.setOnCheckedChangeListener { _, isChecked ->
             group.isChecked = isChecked
             group.details.forEach { it.isChecked = isChecked }
-            
-            // Notificar cambio al padre para que se vea el check sincronizado
-            // Pero tratamos de no re-renderizar todo si es posible
-            updateGroupSizeText()
             onTotalSizeChanged()
-            
-            // Si está expandido, debemos avisar a la lista interna
-            if (group.isExpanded) {
-                holder.rvDetails.adapter?.notifyDataSetChanged()
-            }
+            notifyItemChanged(position)
         }
 
+        // CONTROL DE VISIBILIDAD CRÍTICO: Evita mezclas visuales al reciclar
         holder.rvDetails.visibility = if (group.isExpanded) View.VISIBLE else View.GONE
         holder.ivExpand.rotation = if (group.isExpanded) 180f else 0f
         
         if (group.isExpanded) {
-            setupDetailsList(holder.rvDetails, group, holder)
+            setupDetailsList(holder.rvDetails, group, position)
         } else {
-            holder.rvDetails.adapter = null
+            holder.rvDetails.adapter = null // Limpiar adaptador al cerrar para evitar fugas visuales
         }
 
         holder.ivExpand.setOnClickListener {
@@ -74,36 +63,22 @@ class JunkGroupAdapter(
         }
     }
 
-    private fun setupDetailsList(rv: RecyclerView, group: JunkGroup, holder: GroupViewHolder) {
-        if (rv.adapter == null) {
-            rv.layoutManager = LinearLayoutManager(rv.context)
-            rv.adapter = FileAdapter(
-                files = group.details,
-                isSelectionMode = true,
-                onItemCheckedChange = { _ ->
-                    val allChecked = group.details.all { it.isChecked }
-                    
-                    // Actualizar estado del padre sin re-renderizar toda la fila si es posible
+    private fun setupDetailsList(rv: RecyclerView, group: JunkGroup, parentPosition: Int) {
+        // Siempre usamos un adaptador nuevo o actualizamos los datos para evitar que se mezclen con otras filas
+        rv.layoutManager = LinearLayoutManager(rv.context)
+        rv.adapter = FileAdapter(
+            files = group.details,
+            isSelectionMode = true,
+            onItemCheckedChange = { _ ->
+                // Actualizar estado del padre
+                val allChecked = group.details.all { it.isChecked }
+                if (group.isChecked != allChecked) {
                     group.isChecked = allChecked
-                    holder.cbGroup.setOnCheckedChangeListener(null)
-                    holder.cbGroup.isChecked = allChecked
-                    holder.cbGroup.setOnCheckedChangeListener { _, isChecked ->
-                        group.isChecked = isChecked
-                        group.details.forEach { it.isChecked = isChecked }
-                        val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
-                        holder.tvSize.text = formatFileSize(selectedSize)
-                        onTotalSizeChanged()
-                        rv.adapter?.notifyDataSetChanged()
-                    }
-
-                    val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
-                    holder.tvSize.text = formatFileSize(selectedSize)
-                    onTotalSizeChanged()
                 }
-            ) { _ -> }
-        } else {
-            rv.adapter?.notifyDataSetChanged()
-        }
+                onTotalSizeChanged()
+                notifyItemChanged(parentPosition)
+            }
+        ) { _ -> }
     }
 
     override fun getItemCount() = groups.size

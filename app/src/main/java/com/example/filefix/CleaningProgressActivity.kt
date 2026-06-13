@@ -39,46 +39,30 @@ class CleaningProgressActivity : AppCompatActivity() {
             val scanJob = async(Dispatchers.IO) {
                 val groups = mutableListOf<JunkGroup>()
                 
+                // 1. Caché de apps (Marcado por defecto)
                 val cacheDetails = cleaningManager.getAppsCacheDetails()
                 val totalCacheSize = cacheDetails.sumOf { it.cacheSize }
                 val cacheItems = cacheDetails.map { info ->
-                    FileItem(
-                        id = info.packageName,
-                        name = info.appName,
-                        type = "Caché",
-                        size = info.cacheSize,
-                        status = "Installed",
-                        path = info.packageName
-                    )
+                    FileItem(id = info.packageName, name = info.appName, type = "Caché", 
+                        size = info.cacheSize, status = "Installed", path = info.packageName, isChecked = true)
                 }
                 groups.add(JunkGroup("Caché de archivos basura", totalCacheSize, details = cacheItems, isChecked = true))
                 
+                // 2. Basura del sistema (Marcado por defecto)
                 val systemJunk = cleaningManager.findSystemJunk()
                 val systemSize = systemJunk.sumOf { if (it.isDirectory) 0L else it.length() }
                 val systemItems = systemJunk.map { file ->
-                    FileItem(
-                        id = file.absolutePath,
-                        name = file.name,
-                        type = "Sistema",
-                        size = file.length(),
-                        status = "Junk",
-                        path = file.absolutePath,
-                        isDirectory = file.isDirectory
-                    )
+                    FileItem(id = file.absolutePath, name = file.name, type = "Sistema", 
+                        size = file.length(), status = "Junk", path = file.absolutePath, isDirectory = file.isDirectory, isChecked = true)
                 }
                 groups.add(JunkGroup("Basura del sistema", systemSize, items = systemJunk, details = systemItems, isChecked = true))
 
+                // 3. Apps no usadas (DESMARCADO por defecto - HIJOS TAMBIÉN)
                 val unusedDetails = cleaningManager.getUnusedAppsDetails()
                 val totalAppSize = unusedDetails.sumOf { it.appSize }
                 val appItems = unusedDetails.map { info ->
-                    FileItem(
-                        id = info.packageName,
-                        name = info.appName,
-                        type = "App no usada",
-                        size = info.appSize,
-                        status = "Installed",
-                        path = info.packageName
-                    )
+                    FileItem(id = info.packageName, name = info.appName, type = "App no usada", 
+                        size = info.appSize, status = "Installed", path = info.packageName, isChecked = false)
                 }
                 groups.add(JunkGroup("Desinstala aplicaciones no usadas", totalAppSize, details = appItems, isChecked = false, isAppGroup = true))
                 
@@ -91,16 +75,14 @@ class CleaningProgressActivity : AppCompatActivity() {
                 tvPercentage.text = "$currentProgress%"
                 val statusIndex = (currentProgress / 20).coerceAtMost(statuses.size - 1)
                 tvStatus.text = statuses[statusIndex]
-                if (scanJob.isCompleted) delay(5) else delay(40)
+                if (scanJob.isCompleted) delay(5) else delay(30)
             }
 
             val resultGroups = scanJob.await()
-
             for (p in currentProgress..100) {
                 tvPercentage.text = "$p%"
                 delay(10)
             }
-
             tvStatus.text = "¡Escaneo completado!"
             delay(500)
 
