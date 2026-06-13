@@ -45,8 +45,8 @@ class DashboardActivity : AppCompatActivity() {
             val availableBytes = stat.availableBytes
             val usedBytes = totalBytes - availableBytes
 
-            var usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0)
-            var totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
+            var usedGB = usedBytes / (1000.0 * 1000.0 * 1000.0)
+            var totalGB = totalBytes / (1000.0 * 1000.0 * 1000.0)
 
             val realTotal = when {
                 totalGB > 100 && totalGB < 128 -> 128.0
@@ -104,7 +104,7 @@ class DashboardActivity : AppCompatActivity() {
 
         findViewById<LinearLayout>(R.id.llAllFiles).setOnClickListener { navigateToMain("ALL") }
 
-        findViewById<LinearLayout>(R.id.llOptimizeCategory).setOnClickListener {
+        findViewById<android.view.View>(R.id.llOptimizeCategoryMain).setOnClickListener {
             if (hasManageExternalStoragePermission()) {
                 startActivity(Intent(this, CleaningProgressActivity::class.java))
             } else {

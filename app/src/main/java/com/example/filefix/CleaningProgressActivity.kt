@@ -3,9 +3,10 @@ package com.example.filefix
 import android.content.Intent
 import android.os.Bundle
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.example.filefix.model.FileItem
+import com.example.filefix.model.JunkGroup
 import kotlinx.coroutines.*
 
 class CleaningProgressActivity : AppCompatActivity() {
@@ -35,18 +36,84 @@ class CleaningProgressActivity : AppCompatActivity() {
         )
 
         lifecycleScope.launch {
-            // Animación visual suave de 0 a 100%
-            for (progress in 0..100) {
-                tvPercentage.text = "$progress%"
-                val statusIndex = (progress / 21).coerceAtMost(statuses.size - 1)
-                tvStatus.text = statuses[statusIndex]
-                delay(30)
+            val scanJob = async(Dispatchers.IO) {
+                val groups = mutableListOf<JunkGroup>()
+                
+                val cacheDetails = cleaningManager.getAppsCacheDetails()
+                val totalCacheSize = cacheDetails.sumOf { it.cacheSize }
+                val cacheItems = cacheDetails.map { info ->
+                    FileItem(
+                        id = info.packageName,
+                        name = info.appName,
+                        type = "Caché",
+                        size = info.cacheSize,
+                        status = "Installed",
+                        path = info.packageName
+                    )
+                }
+                groups.add(JunkGroup("Caché de archivos basura", totalCacheSize, details = cacheItems, isChecked = true))
+                
+                val systemJunk = cleaningManager.findSystemJunk()
+                val systemSize = systemJunk.sumOf { if (it.isDirectory) 0L else it.length() }
+                val systemItems = systemJunk.map { file ->
+                    FileItem(
+                        id = file.absolutePath,
+                        name = file.name,
+                        type = "Sistema",
+                        size = file.length(),
+                        status = "Junk",
+                        path = file.absolutePath,
+                        isDirectory = file.isDirectory
+                    )
+                }
+                groups.add(JunkGroup("Basura del sistema", systemSize, items = systemJunk, details = systemItems, isChecked = true))
+
+                val unusedDetails = cleaningManager.getUnusedAppsDetails()
+                val totalAppSize = unusedDetails.sumOf { it.appSize }
+                val appItems = unusedDetails.map { info ->
+                    FileItem(
+                        id = info.packageName,
+                        name = info.appName,
+                        type = "App no usada",
+                        size = info.appSize,
+                        status = "Installed",
+                        path = info.packageName
+                    )
+                }
+                groups.add(JunkGroup("Desinstala aplicaciones no usadas", totalAppSize, details = appItems, isChecked = false, isAppGroup = true))
+                
+                groups
             }
 
+            var currentProgress = 0
+            while (currentProgress < 90) {
+                currentProgress += 1
+                tvPercentage.text = "$currentProgress%"
+                val statusIndex = (currentProgress / 20).coerceAtMost(statuses.size - 1)
+                tvStatus.text = statuses[statusIndex]
+                if (scanJob.isCompleted) delay(5) else delay(40)
+            }
+
+            val resultGroups = scanJob.await()
+
+            for (p in currentProgress..100) {
+                tvPercentage.text = "$p%"
+                delay(10)
+            }
+
+            tvStatus.text = "¡Escaneo completado!"
             delay(500)
-            val intent = Intent(this@CleaningProgressActivity, ResultsActivity::class.java)
-            startActivity(intent)
+
+            ResultsActivity.junkGroupsToDisplay = resultGroups
+            startActivity(Intent(this@CleaningProgressActivity, ResultsActivity::class.java))
             finish()
         }
+    }
+
+    private fun formatFileSize(size: Long): String {
+        if (size <= 0) return "0.00 B"
+        val units = arrayOf("B", "kB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1000.0)).toInt()
+        return "%.2f %s".format(size / Math.pow(1000.0, digitGroups.toDouble()), units[digitGroups])
     }
 }

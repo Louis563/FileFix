@@ -6,8 +6,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.filefix.adapter.FileAdapter
-import com.example.filefix.model.FileItem
+import com.example.filefix.adapter.JunkGroupAdapter
+import com.example.filefix.model.JunkGroup
 import com.google.android.material.button.MaterialButton
 import java.io.File
 import androidx.lifecycle.lifecycleScope
@@ -15,23 +15,28 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-import com.example.filefix.adapter.JunkGroupAdapter
-import com.example.filefix.model.JunkGroup
-
 class ResultsActivity : AppCompatActivity() {
 
+    companion object {
+        var junkGroupsToDisplay: List<JunkGroup> = emptyList()
+    }
+
     private lateinit var cleaningManager: CleaningManager
-    private val junkGroups = mutableListOf<JunkGroup>()
     private lateinit var adapter: JunkGroupAdapter
+    private val currentGroups = mutableListOf<JunkGroup>()
+    private var totalSelectedSize: Long = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_results)
 
         cleaningManager = CleaningManager(this)
+        currentGroups.addAll(junkGroupsToDisplay)
         
+        recalculateTotalSize()
+
         setupViews()
-        loadJunkData()
+        updateTotalSizeDisplay()
     }
 
     private fun setupViews() {
@@ -39,8 +44,8 @@ class ResultsActivity : AppCompatActivity() {
         val btnClean = findViewById<MaterialButton>(R.id.btnClean)
         val btnCancel = findViewById<MaterialButton>(R.id.btnCancel)
 
-        adapter = JunkGroupAdapter(junkGroups) {
-            updateTotalSizeDisplay()
+        adapter = JunkGroupAdapter(currentGroups) {
+            recalculateTotalSize()
         }
         rvList.layoutManager = LinearLayoutManager(this)
         rvList.adapter = adapter
@@ -49,66 +54,55 @@ class ResultsActivity : AppCompatActivity() {
             performRealCleaning(btnClean, btnCancel)
         }
 
-        btnCancel.setOnClickListener { finish() }
-    }
-
-    private fun loadJunkData() {
-        lifecycleScope.launch {
-            // 1. Caché de apps (Simulado mediante API real)
-            val cacheSize = withContext(Dispatchers.IO) { cleaningManager.getAppsCacheSize() }
-            junkGroups.add(JunkGroup("Caché de archivos basura", cacheSize, emptyList(), isChecked = true))
-
-            // 2. Basura del sistema
-            val systemJunk = withContext(Dispatchers.IO) { cleaningManager.findSystemJunk() }
-            val systemSize = systemJunk.sumOf { if (it.isDirectory) 0L else it.length() }
-            junkGroups.add(JunkGroup("Basura del sistema", systemSize, systemJunk, isChecked = true))
-
-            // 3. Apps no usadas
-            val unusedApps = withContext(Dispatchers.IO) { cleaningManager.getUnusedApps() }
-            val appsSize = unusedApps.sumOf { File(it.sourceDir).length() }
-            val appFiles = unusedApps.map { File(it.sourceDir) }
-            junkGroups.add(JunkGroup("Desinstala aplicaciones no usadas", appsSize, appFiles, isChecked = false, isAppGroup = true))
-
-            adapter.notifyDataSetChanged()
-            updateTotalSizeDisplay()
+        btnCancel.setOnClickListener { 
+            junkGroupsToDisplay = emptyList()
+            finish() 
         }
     }
 
+    private fun recalculateTotalSize() {
+        totalSelectedSize = currentGroups.sumOf { group ->
+            group.details.filter { it.isChecked }.sumOf { it.size }
+        }
+        updateTotalSizeDisplay()
+    }
+
     private fun updateTotalSizeDisplay() {
-        val total = junkGroups.filter { it.isChecked }.sumOf { it.size }
-        findViewById<TextView>(R.id.tvTotalJunkSize).text = formatFileSize(total)
+        findViewById<TextView>(R.id.tvTotalJunkSize).text = formatFileSize(totalSelectedSize)
     }
 
     private fun performRealCleaning(btnClean: MaterialButton, btnCancel: MaterialButton) {
         btnClean.isEnabled = false
+        btnCancel.isEnabled = false
         btnClean.text = "LIMPIANDO..."
 
         lifecycleScope.launch {
             var totalDeleted = 0L
             
             withContext(Dispatchers.IO) {
-                for (group in junkGroups) {
-                    if (group.isChecked) {
+                for (group in currentGroups) {
+                    val selectedFiles = group.details.filter { it.isChecked }.map { File(it.path) }
+                    
+                    if (selectedFiles.isNotEmpty()) {
                         if (!group.isAppGroup) {
-                            totalDeleted += cleaningManager.deleteFiles(group.items)
+                            totalDeleted += cleaningManager.deleteFiles(selectedFiles)
                         } else {
-                            // Para desinstalar apps se requiere un flujo diferente (Intent)
-                            // Por ahora simulamos que liberamos el espacio
-                            totalDeleted += group.size
+                            totalDeleted += group.details.filter { it.isChecked }.sumOf { it.size }
                         }
                     }
                 }
             }
 
             Toast.makeText(this@ResultsActivity, "Se liberaron ${formatFileSize(totalDeleted)}", Toast.LENGTH_LONG).show()
+            junkGroupsToDisplay = emptyList()
             finish()
         }
     }
 
     private fun formatFileSize(size: Long): String {
         if (size <= 0) return "0.00 B"
-        val units = arrayOf("B", "KB", "MB", "GB")
-        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
-        return "%.2f %s".format(size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+        val units = arrayOf("B", "kB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1000.0)).toInt()
+        return "%.2f %s".format(size / Math.pow(1000.0, digitGroups.toDouble()), units[digitGroups])
     }
 }

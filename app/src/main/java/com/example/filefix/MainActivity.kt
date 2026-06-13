@@ -138,7 +138,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupRecyclerView() {
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFiles)
-        adapter = FileAdapter(emptyList()) { fileItem ->
+        adapter = FileAdapter(
+            files = emptyList(),
+            isSelectionMode = false,
+            onItemCheckedChange = null
+        ) { fileItem ->
             if (fileItem.isDirectory) {
                 currentPath = fileItem.path
                 loadCurrentDirectory()

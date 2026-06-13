@@ -9,7 +9,6 @@ import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.filefix.R
-import com.example.filefix.model.FileItem
 import com.example.filefix.model.JunkGroup
 
 class JunkGroupAdapter(
@@ -33,48 +32,86 @@ class JunkGroupAdapter(
     override fun onBindViewHolder(holder: GroupViewHolder, position: Int) {
         val group = groups[position]
         holder.tvTitle.text = group.title
-        holder.tvSize.text = formatFileSize(group.size)
-        holder.cbGroup.isChecked = group.isChecked
+        
+        // Función interna para actualizar solo el texto del tamaño del grupo
+        fun updateGroupSizeText() {
+            val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
+            holder.tvSize.text = formatFileSize(selectedSize)
+        }
 
+        updateGroupSizeText()
+        
+        holder.cbGroup.setOnCheckedChangeListener(null)
+        holder.cbGroup.isChecked = group.isChecked
+        
         holder.cbGroup.setOnCheckedChangeListener { _, isChecked ->
             group.isChecked = isChecked
+            group.details.forEach { it.isChecked = isChecked }
+            
+            // Notificar cambio al padre para que se vea el check sincronizado
+            // Pero tratamos de no re-renderizar todo si es posible
+            updateGroupSizeText()
             onTotalSizeChanged()
+            
+            // Si está expandido, debemos avisar a la lista interna
+            if (group.isExpanded) {
+                holder.rvDetails.adapter?.notifyDataSetChanged()
+            }
+        }
+
+        holder.rvDetails.visibility = if (group.isExpanded) View.VISIBLE else View.GONE
+        holder.ivExpand.rotation = if (group.isExpanded) 180f else 0f
+        
+        if (group.isExpanded) {
+            setupDetailsList(holder.rvDetails, group, holder)
+        } else {
+            holder.rvDetails.adapter = null
         }
 
         holder.ivExpand.setOnClickListener {
             group.isExpanded = !group.isExpanded
-            holder.rvDetails.visibility = if (group.isExpanded) View.VISIBLE else View.GONE
-            holder.ivExpand.rotation = if (group.isExpanded) 180f else 0f
-            
-            if (group.isExpanded && holder.rvDetails.adapter == null) {
-                setupDetailsList(holder.rvDetails, group)
-            }
+            notifyItemChanged(position)
         }
     }
 
-    private fun setupDetailsList(rv: RecyclerView, group: JunkGroup) {
-        val items = group.items.map { file ->
-            FileItem(
-                id = file.absolutePath,
-                name = file.name,
-                type = if (file.isDirectory) "Carpeta" else file.extension,
-                size = file.length(),
-                status = "Junk",
-                uri = null,
-                isDirectory = file.isDirectory,
-                path = file.absolutePath
-            )
+    private fun setupDetailsList(rv: RecyclerView, group: JunkGroup, holder: GroupViewHolder) {
+        if (rv.adapter == null) {
+            rv.layoutManager = LinearLayoutManager(rv.context)
+            rv.adapter = FileAdapter(
+                files = group.details,
+                isSelectionMode = true,
+                onItemCheckedChange = { _ ->
+                    val allChecked = group.details.all { it.isChecked }
+                    
+                    // Actualizar estado del padre sin re-renderizar toda la fila si es posible
+                    group.isChecked = allChecked
+                    holder.cbGroup.setOnCheckedChangeListener(null)
+                    holder.cbGroup.isChecked = allChecked
+                    holder.cbGroup.setOnCheckedChangeListener { _, isChecked ->
+                        group.isChecked = isChecked
+                        group.details.forEach { it.isChecked = isChecked }
+                        val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
+                        holder.tvSize.text = formatFileSize(selectedSize)
+                        onTotalSizeChanged()
+                        rv.adapter?.notifyDataSetChanged()
+                    }
+
+                    val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
+                    holder.tvSize.text = formatFileSize(selectedSize)
+                    onTotalSizeChanged()
+                }
+            ) { _ -> }
+        } else {
+            rv.adapter?.notifyDataSetChanged()
         }
-        rv.layoutManager = LinearLayoutManager(rv.context)
-        rv.adapter = FileAdapter(items) { }
     }
 
     override fun getItemCount() = groups.size
 
     private fun formatFileSize(size: Long): String {
         if (size <= 0) return "0.00 B"
-        val units = arrayOf("B", "KB", "MB", "GB")
-        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
-        return "%.2f %s".format(size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+        val units = arrayOf("B", "kB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1000.0)).toInt()
+        return "%.2f %s".format(size / Math.pow(1000.0, digitGroups.toDouble()), units[digitGroups])
     }
 }

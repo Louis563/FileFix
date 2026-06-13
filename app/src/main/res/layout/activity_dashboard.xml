@@ -23,18 +23,34 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <EditText
+            android:id="@+id/etSearch"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/search_bg"
+            android:drawableStart="@android:drawable/ic_menu_search"
+            android:drawablePadding="10dp"
+            android:hint="Buscar Archivos"
+            android:paddingStart="15dp"
+            android:textColorHint="#888888"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
+            app:layout_constraintTop_toBottomOf="@id/tvTitle" />
+
         <!-- Botón de Optimización Central y Grande -->
         <FrameLayout
             android:id="@+id/llOptimizeCategoryMain"
             android:layout_width="220dp"
             android:layout_height="220dp"
-            android:layout_marginTop="60dp"
+            android:layout_marginTop="30dp"
             android:background="@drawable/circle_optimize_bg"
             android:clickable="true"
             android:focusable="true"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tvTitle">
+            app:layout_constraintTop_toBottomOf="@id/etSearch">
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -250,6 +266,13 @@
                     android:layout_height="wrap_content"
                     android:text="Descargas"
                     android:textColor="#FFFFFF" />
+                <TextView
+                    android:id="@+id/tvDownloadCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#888888"
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <View android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="0.5" />

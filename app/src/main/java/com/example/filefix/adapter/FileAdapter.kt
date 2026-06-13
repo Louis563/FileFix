@@ -5,6 +5,7 @@ import android.util.Size
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -18,6 +19,8 @@ import kotlinx.coroutines.withContext
 
 class FileAdapter(
     private var files: List<FileItem>,
+    private val isSelectionMode: Boolean = false,
+    private val onItemCheckedChange: ((FileItem) -> Unit)? = null,
     private val onItemClick: (FileItem) -> Unit
 ) : RecyclerView.Adapter<FileAdapter.FileViewHolder>() {
 
@@ -28,6 +31,7 @@ class FileAdapter(
         val fileType: TextView = view.findViewById(R.id.txtFileType)
         val fileSize: TextView = view.findViewById(R.id.txtFileSize)
         val fileIcon: ImageView = view.findViewById(R.id.imgFileIcon)
+        val cbSelect: CheckBox = view.findViewById(R.id.cbFileSelect)
         val root: View = view
     }
 
@@ -42,7 +46,6 @@ class FileAdapter(
     override fun onBindViewHolder(holder: FileViewHolder, position: Int) {
         val file = files[position]
         holder.fileName.text = file.name
-        
         holder.fileType.text = getFriendlyTypeName(file)
         
         if (file.isDirectory) {
@@ -51,12 +54,23 @@ class FileAdapter(
             holder.fileSize.text = formatFileSize(file.size)
         }
 
+        if (isSelectionMode) {
+            holder.cbSelect.visibility = View.VISIBLE
+            holder.cbSelect.setOnCheckedChangeListener(null)
+            holder.cbSelect.isChecked = file.isChecked
+            holder.cbSelect.setOnCheckedChangeListener { _, isChecked ->
+                file.isChecked = isChecked
+                onItemCheckedChange?.invoke(file)
+            }
+        } else {
+            holder.cbSelect.visibility = View.GONE
+        }
+
         holder.fileIcon.setImageResource(R.drawable.ic_launcher_foreground) 
         holder.fileIcon.clearColorFilter()
         
         if (file.isDirectory) {
             holder.fileIcon.setImageResource(R.drawable.ic_folder)
-            holder.fileIcon.clearColorFilter()
         } else {
             val isMedia = file.type.startsWith("image") || file.type.startsWith("video")
             val isInstalledApp = file.status == "Installed"
@@ -67,9 +81,11 @@ class FileAdapter(
                 loadThumbnailOnDemand(holder.fileIcon, file)
             } else {
                 val iconRes = when {
-                    file.type.contains("pdf") -> android.R.drawable.ic_menu_agenda
-                    file.type.contains("word") || file.type.contains("officedocument.word") -> android.R.drawable.ic_menu_edit
-                    file.type.contains("excel") || file.type.contains("officedocument.sheet") -> android.R.drawable.ic_menu_save
+                    file.type.contains("pdf") -> R.drawable.ic_pdf
+                    file.type.contains("word") || file.type.contains("officedocument.word") -> R.drawable.ic_word
+                    file.type.contains("excel") || file.type.contains("officedocument.sheet") -> R.drawable.ic_excel
+                    file.type.contains("powerpoint") || file.type.contains("officedocument.presentation") -> R.drawable.ic_ppt
+                    file.type.contains("text") -> R.drawable.ic_txt
                     file.type.contains("audio") -> android.R.drawable.ic_lock_silent_mode_off
                     else -> android.R.drawable.ic_menu_save
                 }
@@ -117,10 +133,10 @@ class FileAdapter(
     }
 
     private fun formatFileSize(size: Long): String {
-        if (size <= 0) return "0 B"
-        val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
-        return "%.2f %s".format(size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+        if (size <= 0) return "0.00 B"
+        val units = arrayOf("B", "kB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1000.0)).toInt()
+        return "%.2f %s".format(size / Math.pow(1000.0, digitGroups.toDouble()), units[digitGroups])
     }
 
     private fun loadThumbnailOnDemand(imageView: ImageView, file: FileItem) {

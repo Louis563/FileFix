@@ -236,7 +236,8 @@ class FileScanner(private val context: Context) {
                 if (storageStatsManager != null) {
                     try {
                         val stats = storageStatsManager.queryStatsForPackage(StorageManager.UUID_DEFAULT, app.packageName, user)
-                        totalSize = stats.appBytes + stats.dataBytes + stats.cacheBytes
+                        // IMPORTANTE: stats.dataBytes ya incluye la caché.
+                        totalSize = stats.appBytes + stats.dataBytes
                     } catch (_: Exception) {
                     }
                 }

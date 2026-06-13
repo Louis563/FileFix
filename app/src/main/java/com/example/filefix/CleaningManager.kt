@@ -16,43 +16,46 @@ class CleaningManager(private val context: Context) {
     private val junkExtensions = setOf("tmp", "log", "cache", "temp", "apk_temp", "old", "bak")
     private val junkFolderNames = setOf("cache", "temp", "logs")
 
+    data class AppJunkInfo(
+        val appName: String,
+        val packageName: String,
+        val cacheSize: Long,
+        val appSize: Long = 0L
+    )
+
     /**
-     * Identifica el caché real de las aplicaciones instaladas usando APIs de sistema.
+     * Obtiene una lista de apps y cuánto espacio de caché ocupa cada una.
      */
-    fun getAppsCacheSize(): Long {
-        val storageStatsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as? StorageStatsManager ?: return 0L
+    fun getAppsCacheDetails(): List<AppJunkInfo> {
+        val details = mutableListOf<AppJunkInfo>()
+        val storageStatsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as? StorageStatsManager ?: return details
         val pm = context.packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        var totalCache = 0L
 
         for (app in apps) {
             try {
-                // Solo apps de usuario o que no sean del sistema críticas
                 val stats = storageStatsManager.queryStatsForPackage(StorageManager.UUID_DEFAULT, app.packageName, Process.myUserHandle())
-                totalCache += stats.cacheBytes
+                if (stats.cacheBytes > 1024 * 1024) { // Solo mostrar apps con más de 1MB de caché
+                    details.add(AppJunkInfo(
+                        appName = pm.getApplicationLabel(app).toString(),
+                        packageName = app.packageName,
+                        cacheSize = stats.cacheBytes
+                    ))
+                }
             } catch (e: Exception) { }
         }
-        return totalCache
+        return details.sortedByDescending { it.cacheSize }
     }
 
-    /**
-     * Busca basura del sistema (thumbnails, archivos temporales, .log, etc.)
-     */
     fun findSystemJunk(): List<File> {
         val junkList = mutableListOf<File>()
         val externalStorage = Environment.getExternalStorageDirectory()
-        
-        // 1. Thumbnails (Candidatos 100% basura)
         val dcim = File(externalStorage, "DCIM")
         val thumbnails = File(dcim, ".thumbnails")
         if (thumbnails.exists()) {
-            junkList.add(thumbnails)
             addFilesRecursive(thumbnails, junkList)
         }
-
-        // 2. Escaneo de archivos temporales en carpetas comunes
         scanForJunkInRoot(externalStorage, junkList)
-
         return junkList
     }
 
@@ -61,12 +64,10 @@ class CleaningManager(private val context: Context) {
         for (file in files) {
             val name = file.name.lowercase()
             if (file.isDirectory) {
-                if (file.name == "Android") continue // No tocar carpeta Android por seguridad
+                if (file.name == "Android") continue
                 if (junkFolderNames.contains(name)) {
-                    junkList.add(file)
                     addFilesRecursive(file, junkList)
                 } else if (!file.isHidden) {
-                    // Escaneo limitado para no ralentizar la demo
                     scanForJunkInRoot(file, junkList)
                 }
             } else {
@@ -74,7 +75,7 @@ class CleaningManager(private val context: Context) {
                     junkList.add(file)
                 }
             }
-            if (junkList.size > 200) break // Límite para la demo
+            if (junkList.size > 500) break
         }
     }
 
@@ -86,18 +87,13 @@ class CleaningManager(private val context: Context) {
         }
     }
 
-    /**
-     * Identifica aplicaciones no usadas en los últimos 30 días.
-     */
-    fun getUnusedApps(): List<ApplicationInfo> {
+    fun getUnusedAppsDetails(): List<AppJunkInfo> {
         val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return emptyList()
         val pm = context.packageManager
-        
         val cal = Calendar.getInstance()
         cal.add(Calendar.DAY_OF_YEAR, -30)
         val thirtyDaysAgo = cal.timeInMillis
 
-        // Consultamos estadísticas del último mes
         val stats = usageStatsManager.queryAndAggregateUsageStats(thirtyDaysAgo, System.currentTimeMillis())
         val allApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
         
@@ -105,15 +101,19 @@ class CleaningManager(private val context: Context) {
             val isSystemApp = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
             val launchIntent = pm.getLaunchIntentForPackage(app.packageName)
             val lastUsed = stats[app.packageName]?.lastTimeUsed ?: 0L
-            
-            // Sugerir si: no es del sistema, tiene icono de inicio y no se usó en 30 días
             !isSystemApp && launchIntent != null && (lastUsed < thirtyDaysAgo)
-        }.sortedBy { stats[it.packageName]?.lastTimeUsed ?: 0L }
+        }.map { app ->
+            AppJunkInfo(
+                appName = pm.getApplicationLabel(app).toString(),
+                packageName = app.packageName,
+                cacheSize = 0L,
+                appSize = File(app.sourceDir).length()
+            )
+        }.sortedByDescending { it.appSize }
     }
 
     fun deleteFiles(files: List<File>): Long {
         var totalDeleted = 0L
-        // Ordenamos para borrar archivos antes que carpetas
         val sorted = files.sortedByDescending { it.absolutePath.length }
         for (file in sorted) {
             val size = if (file.isDirectory) 0L else file.length()
