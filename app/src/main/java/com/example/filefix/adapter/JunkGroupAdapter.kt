@@ -13,12 +13,8 @@ import com.example.filefix.model.JunkGroup
 
 class JunkGroupAdapter(
     private val groups: List<JunkGroup>,
-    private val onCacheGlobalAction: () -> Unit,
-    private val onCacheItemAction: (String) -> Unit,
     private val onTotalSizeChanged: () -> Unit
 ) : RecyclerView.Adapter<JunkGroupAdapter.GroupViewHolder>() {
-
-    private val childAdapters = mutableMapOf<Int, FileAdapter>()
 
     class GroupViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val cbGroup: CheckBox = view.findViewById(R.id.cbGroup)
@@ -26,12 +22,10 @@ class JunkGroupAdapter(
         val tvSize: TextView = view.findViewById(R.id.tvGroupSize)
         val ivExpand: ImageView = view.findViewById(R.id.ivExpand)
         val rvDetails: RecyclerView = view.findViewById(R.id.rvGroupDetails)
-        val rlHeader: View = view.findViewById(R.id.rlHeader)
 
         init {
             rvDetails.layoutManager = LinearLayoutManager(view.context)
-            // Deshabilitar animaciones anidadas para mejorar fluidez
-            rvDetails.itemAnimator = null
+            rvDetails.itemAnimator = null 
         }
     }
 
@@ -44,71 +38,73 @@ class JunkGroupAdapter(
         val group = groups[position]
         holder.tvTitle.text = group.title
         
-        val isCacheGroup = group.title.contains("Caché", ignoreCase = true)
-
-        if (isCacheGroup) {
-            holder.cbGroup.visibility = View.GONE
-            holder.tvSize.text = "Toca para limpieza global"
-            holder.rlHeader.setOnClickListener { onCacheGlobalAction() }
-        } else {
-            holder.cbGroup.visibility = View.VISIBLE
-            // Mostrar tamaño total del grupo (precalculado preferiblemente)
+        fun updateGroupSizeText() {
             val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
             holder.tvSize.text = formatFileSize(selectedSize)
-            
-            holder.cbGroup.setOnCheckedChangeListener(null)
-            holder.cbGroup.isChecked = group.isChecked
-            
-            holder.cbGroup.setOnCheckedChangeListener { _, isChecked ->
-                group.isChecked = isChecked
-                group.details.forEach { it.isChecked = isChecked }
-                onTotalSizeChanged()
-                childAdapters[position]?.notifyDataSetChanged()
-                holder.tvSize.text = formatFileSize(group.details.filter { it.isChecked }.sumOf { it.size })
-            }
-            holder.rlHeader.setOnClickListener(null)
         }
 
-        // Manejo de expansión
+        updateGroupSizeText()
+        
+        holder.cbGroup.setOnCheckedChangeListener(null)
+        holder.cbGroup.isChecked = group.isChecked
+        
+        holder.cbGroup.setOnCheckedChangeListener { _, isChecked ->
+            group.isChecked = isChecked
+            group.details.forEach { it.isChecked = isChecked }
+            updateGroupSizeText()
+            onTotalSizeChanged()
+            // Refrescar lista interna si está visible
+            if (group.isExpanded) {
+                holder.rvDetails.adapter?.notifyDataSetChanged()
+            }
+        }
+
         holder.rvDetails.visibility = if (group.isExpanded) View.VISIBLE else View.GONE
         holder.ivExpand.rotation = if (group.isExpanded) 180f else 0f
         
         if (group.isExpanded) {
-            val adapter = childAdapters.getOrPut(position) {
-                FileAdapter(
-                    files = group.details,
-                    isSelectionMode = !isCacheGroup,
-                    onItemCheckedChange = { _ ->
-                        val allChecked = group.details.all { it.isChecked }
-                        if (group.isChecked != allChecked) {
-                            group.isChecked = allChecked
-                            holder.cbGroup.setOnCheckedChangeListener(null)
-                            holder.cbGroup.isChecked = allChecked
-                            // Re-bind listener after setting state
-                            holder.cbGroup.setOnCheckedChangeListener { _, isChecked ->
-                                group.isChecked = isChecked
-                                group.details.forEach { it.isChecked = isChecked }
-                                onTotalSizeChanged()
-                                childAdapters[position]?.notifyDataSetChanged()
-                                holder.tvSize.text = formatFileSize(group.details.filter { it.isChecked }.sumOf { it.size })
-                            }
-                        }
-                        onTotalSizeChanged()
-                        holder.tvSize.text = formatFileSize(group.details.filter { it.isChecked }.sumOf { it.size })
-                    }
-                ) { file ->
-                    if (isCacheGroup) onCacheItemAction(file.id)
-                }
-            }
-            if (holder.rvDetails.adapter != adapter) {
-                holder.rvDetails.adapter = adapter
-            }
+            setupDetailsList(holder.rvDetails, group, holder)
+        } else {
+            // Importante: Limpiar el adaptador para evitar mezclas al reciclar
+            holder.rvDetails.adapter = null
         }
 
         holder.ivExpand.setOnClickListener {
             group.isExpanded = !group.isExpanded
             notifyItemChanged(position)
         }
+    }
+
+    private fun setupDetailsList(rv: RecyclerView, group: JunkGroup, holder: GroupViewHolder) {
+        // SIEMPRE asignamos un nuevo adaptador o actualizamos los datos para evitar el bug de reciclaje
+        rv.adapter = FileAdapter(
+            files = group.details,
+            isSelectionMode = true,
+            onItemCheckedChange = { _ ->
+                val allChecked = group.details.all { it.isChecked }
+                
+                if (group.isChecked != allChecked) {
+                    group.isChecked = allChecked
+                    holder.cbGroup.setOnCheckedChangeListener(null)
+                    holder.cbGroup.isChecked = allChecked
+                    // Re-asignar el listener principal después de cambiar el estado visual
+                    holder.cbGroup.setOnCheckedChangeListener { _, isChecked ->
+                        group.isChecked = isChecked
+                        group.details.forEach { it.isChecked = isChecked }
+                        updateGroupSizeText(holder, group)
+                        onTotalSizeChanged()
+                        rv.adapter?.notifyDataSetChanged()
+                    }
+                }
+                updateGroupSizeText(holder, group)
+                onTotalSizeChanged()
+            }
+        ) { _ -> }
+    }
+
+    private fun updateGroupSizeText(holder: GroupViewHolder, group: JunkGroup) {
+        val selectedSize = group.details.filter { it.isChecked }.sumOf { it.size }
+        holder.tvSize.text = formatFileSize(selectedSize)
     }
 
     override fun getItemCount() = groups.size

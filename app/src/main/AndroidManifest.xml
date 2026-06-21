@@ -50,6 +50,7 @@
 
         <activity
             android:name=".ResultsActivity"
+            android:configChanges="orientation|screenSize|screenLayout"
             android:exported="false" />
 
         <provider

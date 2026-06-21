@@ -2,6 +2,7 @@ package com.example.filefix
 
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,11 +15,24 @@ import androidx.appcompat.app.AppCompatActivity
 import android.widget.TextView
 import android.os.StatFs
 import android.widget.ProgressBar
+import android.os.BatteryManager
+import android.app.ActivityManager
+import android.graphics.Color
 import java.io.File
 
 class DashboardActivity : AppCompatActivity() {
 
     private lateinit var fileScanner: FileScanner
+
+    private val batteryReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            intent?.let {
+                val temperature = it.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10.0
+                val health = it.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_UNKNOWN)
+                updateBatteryUI(temperature, health)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,6 +48,43 @@ class DashboardActivity : AppCompatActivity() {
         super.onResume()
         updateFileCounts()
         updateStorageInfo()
+        updateRamInfo()
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterReceiver(batteryReceiver)
+    }
+
+    private fun updateBatteryUI(temp: Double, health: Int) {
+        val healthText = when (health) {
+            BatteryManager.BATTERY_HEALTH_GOOD -> "Buena"
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Sobrecalentada"
+            BatteryManager.BATTERY_HEALTH_DEAD -> "Mala"
+            BatteryManager.BATTERY_HEALTH_COLD -> "Fría"
+            else -> "Normal"
+        }
+        
+        findViewById<TextView>(R.id.tvBatteryStatus).text = "Salud: $healthText"
+        findViewById<TextView>(R.id.tvBatteryTemp).text = "Temp: $temp °C"
+        
+        val tempColor = if (temp > 38) "#FF5252" else "#00E676"
+        findViewById<TextView>(R.id.tvBatteryTemp).setTextColor(Color.parseColor(tempColor))
+    }
+
+    private fun updateRamInfo() {
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val memoryInfo = ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+
+        val totalRam = memoryInfo.totalMem / (1000.0 * 1000.0 * 1000.0)
+        val availableRam = memoryInfo.availMem / (1000.0 * 1000.0 * 1000.0)
+        val usedRam = totalRam - availableRam
+
+        findViewById<TextView>(R.id.tvRamStatus).text = String.format("%.1f GB / %.1f GB", usedRam, totalRam)
+        val progress = ((usedRam / totalRam) * 100).toInt()
+        findViewById<ProgressBar>(R.id.pbRamUsage).progress = progress
     }
 
     private fun updateStorageInfo() {
@@ -189,7 +240,7 @@ class DashboardActivity : AppCompatActivity() {
             .setTitle("Permiso necesario")
             .setMessage("Para el correcto funcionamiento de la gestión de aplicaciones, se requiere el permiso de acceso a datos de uso.")
             .setPositiveButton("Configurar") { _, _ ->
-                startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             }
             .setNegativeButton("Cancelar", null)
             .show()

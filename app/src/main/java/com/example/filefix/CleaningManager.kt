@@ -1,31 +1,29 @@
 package com.example.filefix
 
 import android.app.usage.StorageStatsManager
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Environment
 import android.os.Process
 import android.os.storage.StorageManager
+import com.example.filefix.model.AppJunkInfo
 import java.io.File
 import java.util.*
 
 class CleaningManager(private val context: Context) {
 
-    private val junkExtensions = setOf("tmp", "log", "cache", "temp", "apk_temp", "old", "bak", "logcat", "err")
-    private val junkFolderNames = setOf("cache", "temp", "logs", "bugreports", "thumbnails")
+    private val junkExtensions = setOf("tmp", "log", "cache", "temp", "apk_temp", "old", "bak", "thumbdata")
+    private val junkFolderNames = setOf("cache", "temp", "logs", ".thumbnails")
 
-    data class AppJunkInfo(
-        val appName: String,
-        val packageName: String,
-        val cacheSize: Long,
-        val appSize: Long = 0L
+    private val protectedExtensions = setOf(
+        "jpg", "jpeg", "png", "webp", "gif", "bmp",
+        "mp4", "mkv", "mov", "avi", "3gp",
+        "mp3", "wav", "ogg", "flac", "m4a",
+        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt",
+        "zip", "rar", "7z"
     )
 
-    /**
-     * Obtiene una lista de apps y cuánto espacio de caché ocupa cada una.
-     */
     fun getAppsCacheDetails(): List<AppJunkInfo> {
         val details = mutableListOf<AppJunkInfo>()
         val storageStatsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as? StorageStatsManager ?: return details
@@ -35,7 +33,7 @@ class CleaningManager(private val context: Context) {
         for (app in apps) {
             try {
                 val stats = storageStatsManager.queryStatsForPackage(StorageManager.UUID_DEFAULT, app.packageName, Process.myUserHandle())
-                if (stats.cacheBytes > 1024 * 1024) { // Solo mostrar apps con más de 1MB de caché
+                if (stats.cacheBytes > 1024 * 1024) { 
                     details.add(AppJunkInfo(
                         appName = pm.getApplicationLabel(app).toString(),
                         packageName = app.packageName,
@@ -48,72 +46,62 @@ class CleaningManager(private val context: Context) {
     }
 
     fun findSystemJunk(): List<File> {
-        val junkList = mutableListOf<File>()
-        val externalStorage = Environment.getExternalStorageDirectory()
-        
-        // 1. Carpetas de miniaturas y temporales comunes
-        val commonJunkPaths = listOf(
-            "DCIM/.thumbnails",
-            "Pictures/.thumbnails",
-            "Android/data/com.android.providers.media/cache",
-            "Download/.temp",
-            "Download/.tmp"
-        )
-        
-        for (path in commonJunkPaths) {
-            val folder = File(externalStorage, path)
-            if (folder.exists()) {
-                if (folder.isDirectory) addFilesRecursive(folder, junkList)
-                else junkList.add(folder)
-            }
-        }
-
-        // 2. Escaneo profundo de basura y carpetas vacías
-        scanForJunkAndEmptyFolders(externalStorage, junkList)
-        
-        return junkList
+        val junkFiles = mutableListOf<File>()
+        val root = Environment.getExternalStorageDirectory()
+        scanDirectory(root, junkFiles)
+        return junkFiles
     }
 
-    private fun scanForJunkAndEmptyFolders(root: File, junkList: MutableList<File>) {
-        val files = root.listFiles() ?: return
-        if (files.isEmpty()) {
-            // Es una carpeta vacía (y no es la raíz)
-            if (root != Environment.getExternalStorageDirectory() && !root.name.startsWith(".")) {
-                junkList.add(root)
-            }
-            return
-        }
-
+    private fun scanDirectory(directory: File, junkList: MutableList<File>) {
+        val files = directory.listFiles() ?: return
+        
         for (file in files) {
             val name = file.name.lowercase()
+            
             if (file.isDirectory) {
-                // Evitar carpetas críticas del sistema y apps
-                if (file.name == "Android" || file.name.startsWith(".")) continue
-                
+                if (file.name == "Android") continue
                 if (junkFolderNames.contains(name)) {
-                    addFilesRecursive(file, junkList)
+                    cleanAllInside(file, junkList)
+                    junkList.add(file)
                 } else {
-                    scanForJunkAndEmptyFolders(file, junkList)
+                    scanDirectory(file, junkList)
                 }
             } else {
-                if (junkExtensions.contains(file.extension.lowercase()) || name.startsWith(".tmp")) {
+                if (isJunkFile(file)) {
                     junkList.add(file)
                 }
             }
-            if (junkList.size > 1000) break // Límite de seguridad
+            if (junkList.size > 2000) break
         }
     }
 
-    private fun addFilesRecursive(directory: File, junkList: MutableList<File>) {
+    private fun cleanAllInside(directory: File, junkList: MutableList<File>) {
         val files = directory.listFiles() ?: return
         for (file in files) {
-            junkList.add(file)
-            if (file.isDirectory) addFilesRecursive(file, junkList)
+            if (file.isDirectory) {
+                cleanAllInside(file, junkList)
+                junkList.add(file)
+            } else {
+                junkList.add(file)
+            }
         }
+    }
+
+    private fun isJunkFile(file: File): Boolean {
+        val name = file.name.lowercase()
+        val extension = file.extension.lowercase()
+        
+        if (name == ".nomedia") return false
+        if (protectedExtensions.contains(extension)) return false
+        if (name.startsWith(".thumbdata") || extension.contains("thumbdata")) return true
+        if (junkExtensions.contains(extension)) return true
+        if (name.startsWith(".") && file.length() < 2048) return true
+
+        return false
     }
 
     fun getUnusedAppsDetails(): List<AppJunkInfo> {
-        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return emptyList()
+        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager ?: return emptyList()
         val pm = context.packageManager
         val cal = Calendar.getInstance()
         cal.add(Calendar.DAY_OF_YEAR, -30)
@@ -138,68 +126,37 @@ class CleaningManager(private val context: Context) {
     }
 
     fun deleteFiles(files: List<File>): Long {
-        var totalDeleted = 0L
-        val sorted = files.sortedByDescending { it.absolutePath.length }
-        for (file in sorted) {
-            val size = if (file.isDirectory) 0L else file.length()
-            if (file.delete()) totalDeleted += size
-        }
-        return totalDeleted
-    }
-
-    /**
-     * Intenta abrir el diálogo del sistema para borrar el caché de todas las apps.
-     * Retorna un Intent que debe ser lanzado desde una Activity.
-     */
-    fun getGlobalCacheClearIntent(): android.content.Intent? {
-        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            android.content.Intent(StorageManager.ACTION_CLEAR_APP_CACHE)
-        } else {
-            null
-        }
-    }
-
-    /**
-     * Abre la configuración de una aplicación específica para que el usuario borre el caché manualmente.
-     */
-    fun openAppSettings(packageName: String) {
-        try {
-            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            intent.data = android.net.Uri.parse("package:$packageName")
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    /**
-     * Utiliza el truco de StorageManager.allocateBytes como fallback o para activar el recolector.
-     */
-    fun clearAppCaches(): Boolean {
-        return try {
-            val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager ?: return false
-            
-            // Usamos el UUID por defecto del almacenamiento interno
-            val uuid = StorageManager.UUID_DEFAULT
-            
-            // Obtenemos cuántos bytes se pueden liberar (espacio libre + cachés borrables)
-            val allocatableBytes = storageManager.getAllocatableBytes(uuid)
-            
-            android.util.Log.d("FileFix", "Allocatable bytes: $allocatableBytes")
-
-            if (allocatableBytes > 0) {
-                // Solicitamos liberar el 90% de lo asignable para forzar la limpieza de caché de apps
-                val targetBytes = (allocatableBytes * 0.9).toLong()
-                android.util.Log.d("FileFix", "Allocating bytes: $targetBytes")
-                storageManager.allocateBytes(uuid, targetBytes)
-                true
+        var totalDeletedSpace = 0L
+        val sortedFiles = files.sortedWith(compareBy({ !it.isDirectory }, { it.absolutePath.length })).reversed()
+        
+        for (file in sortedFiles) {
+            if (!file.isDirectory) {
+                val size = file.length()
+                if (file.delete()) {
+                    totalDeletedSpace += size
+                }
             } else {
-                false
+                file.delete()
             }
-        } catch (e: Exception) {
-            android.util.Log.e("FileFix", "Error clearing cache: ${e.message}")
-            false
         }
+        return totalDeletedSpace
+    }
+
+    fun boostRam(): Int {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val pm = context.packageManager
+        val packages = pm.getInstalledApplications(0)
+        var count = 0
+
+        for (packageInfo in packages) {
+            val isSystemApp = (packageInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            if (!isSystemApp && packageInfo.packageName != context.packageName) {
+                try {
+                    activityManager.killBackgroundProcesses(packageInfo.packageName)
+                    count++
+                } catch (e: Exception) {}
+            }
+        }
+        return count
     }
 }

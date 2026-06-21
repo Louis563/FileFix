@@ -19,6 +19,7 @@ class ResultsActivity : AppCompatActivity() {
 
     companion object {
         var junkGroupsToDisplay: List<JunkGroup> = emptyList()
+        var ramSizeLiberated: Long = 0L
     }
 
     private lateinit var cleaningManager: CleaningManager
@@ -34,9 +35,13 @@ class ResultsActivity : AppCompatActivity() {
         currentGroups.addAll(junkGroupsToDisplay)
         
         recalculateTotalSize()
-
         setupViews()
         updateTotalSizeDisplay()
+        
+        if (ramSizeLiberated > 1024 * 1024) { 
+            Toast.makeText(this, "¡Memoria acelerada! Se liberaron ${formatFileSize(ramSizeLiberated)} de RAM", Toast.LENGTH_SHORT).show()
+            ramSizeLiberated = 0L
+        }
     }
 
     private fun setupViews() {
@@ -44,27 +49,9 @@ class ResultsActivity : AppCompatActivity() {
         val btnClean = findViewById<MaterialButton>(R.id.btnClean)
         val btnCancel = findViewById<MaterialButton>(R.id.btnCancel)
 
-        adapter = JunkGroupAdapter(
-            groups = currentGroups,
-            onCacheGlobalAction = {
-                val globalIntent = cleaningManager.getGlobalCacheClearIntent()
-                if (globalIntent != null) {
-                    startActivity(globalIntent)
-                } else {
-                    Toast.makeText(this, "Limpiando caché del sistema...", Toast.LENGTH_SHORT).show()
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        cleaningManager.clearAppCaches()
-                    }
-                }
-            },
-            onCacheItemAction = { packageName ->
-                Toast.makeText(this, "Pulse en 'Borrar Caché' en la siguiente pantalla", Toast.LENGTH_LONG).show()
-                cleaningManager.openAppSettings(packageName)
-            },
-            onTotalSizeChanged = {
-                recalculateTotalSize()
-            }
-        )
+        adapter = JunkGroupAdapter(currentGroups) {
+            recalculateTotalSize()
+        }
         rvList.layoutManager = LinearLayoutManager(this)
         rvList.adapter = adapter
 
@@ -73,18 +60,14 @@ class ResultsActivity : AppCompatActivity() {
         }
 
         btnCancel.setOnClickListener { 
-            junkGroupsToDisplay = emptyList()
+            cleanupData()
             finish() 
         }
     }
 
     private fun recalculateTotalSize() {
         totalSelectedSize = currentGroups.sumOf { group ->
-            if (group.title.contains("Caché", ignoreCase = true)) {
-                0L // El caché ya no es parte de la selección por lotes
-            } else {
-                group.details.filter { it.isChecked }.sumOf { it.size }
-            }
+            group.details.filter { it.isChecked }.sumOf { it.size }
         }
         updateTotalSizeDisplay()
     }
@@ -104,41 +87,34 @@ class ResultsActivity : AppCompatActivity() {
             
             withContext(Dispatchers.IO) {
                 for (group in currentGroups) {
-                    val anyChildChecked = group.details.any { it.isChecked }
-                    if (!group.isChecked && !anyChildChecked) continue
-
                     if (group.isAppGroup) {
-                        // Recolectar paquetes para desinstalar
                         appsToUninstall.addAll(group.details.filter { it.isChecked }.map { it.id })
-                    } else if (group.title.contains("Caché", ignoreCase = true)) {
-                        // El caché ahora se maneja mediante botones individuales en el Adapter
-                        continue 
                     } else {
-                        // Archivos de sistema (Junk)
-                        val selectedFiles = group.details.filter { it.isChecked }.map { File(it.path) }
-                        if (selectedFiles.isNotEmpty()) {
-                            totalDeleted += cleaningManager.deleteFiles(selectedFiles)
+                        val filesToDelete = mutableListOf<File>()
+                        group.details.filter { it.isChecked }.forEach { detail ->
+                            if (detail.id.startsWith("folder_")) {
+                                val folderPath = detail.path
+                                filesToDelete.addAll(group.items.filter { it.absolutePath.startsWith(folderPath) })
+                            } else {
+                                filesToDelete.add(File(detail.path))
+                            }
+                        }
+                        if (filesToDelete.isNotEmpty()) {
+                            totalDeleted += cleaningManager.deleteFiles(filesToDelete)
                         }
                     }
                 }
             }
 
-            if (totalDeleted > 0) {
-                Toast.makeText(this@ResultsActivity, "Se liberaron ${formatFileSize(totalDeleted)}", Toast.LENGTH_LONG).show()
-            }
-
-            // Manejar desinstalaciones
-            if (appsToUninstall.isNotEmpty()) {
-                for (packageName in appsToUninstall) {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_DELETE)
-                    intent.data = android.net.Uri.parse("package:$packageName")
-                    startActivity(intent)
-                }
-            }
-
-            junkGroupsToDisplay = emptyList()
+            Toast.makeText(this@ResultsActivity, "Se liberaron ${formatFileSize(totalDeleted)}", Toast.LENGTH_LONG).show()
+            cleanupData()
             finish()
         }
+    }
+
+    private fun cleanupData() {
+        junkGroupsToDisplay = emptyList()
+        ramSizeLiberated = 0L
     }
 
     private fun formatFileSize(size: Long): String {
