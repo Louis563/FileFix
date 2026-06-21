@@ -13,8 +13,8 @@ import java.util.*
 
 class CleaningManager(private val context: Context) {
 
-    private val junkExtensions = setOf("tmp", "log", "cache", "temp", "apk_temp", "old", "bak")
-    private val junkFolderNames = setOf("cache", "temp", "logs")
+    private val junkExtensions = setOf("tmp", "log", "cache", "temp", "apk_temp", "old", "bak", "logcat", "err")
+    private val junkFolderNames = setOf("cache", "temp", "logs", "bugreports", "thumbnails")
 
     data class AppJunkInfo(
         val appName: String,
@@ -50,32 +50,57 @@ class CleaningManager(private val context: Context) {
     fun findSystemJunk(): List<File> {
         val junkList = mutableListOf<File>()
         val externalStorage = Environment.getExternalStorageDirectory()
-        val dcim = File(externalStorage, "DCIM")
-        val thumbnails = File(dcim, ".thumbnails")
-        if (thumbnails.exists()) {
-            addFilesRecursive(thumbnails, junkList)
+        
+        // 1. Carpetas de miniaturas y temporales comunes
+        val commonJunkPaths = listOf(
+            "DCIM/.thumbnails",
+            "Pictures/.thumbnails",
+            "Android/data/com.android.providers.media/cache",
+            "Download/.temp",
+            "Download/.tmp"
+        )
+        
+        for (path in commonJunkPaths) {
+            val folder = File(externalStorage, path)
+            if (folder.exists()) {
+                if (folder.isDirectory) addFilesRecursive(folder, junkList)
+                else junkList.add(folder)
+            }
         }
-        scanForJunkInRoot(externalStorage, junkList)
+
+        // 2. Escaneo profundo de basura y carpetas vacías
+        scanForJunkAndEmptyFolders(externalStorage, junkList)
+        
         return junkList
     }
 
-    private fun scanForJunkInRoot(root: File, junkList: MutableList<File>) {
+    private fun scanForJunkAndEmptyFolders(root: File, junkList: MutableList<File>) {
         val files = root.listFiles() ?: return
+        if (files.isEmpty()) {
+            // Es una carpeta vacía (y no es la raíz)
+            if (root != Environment.getExternalStorageDirectory() && !root.name.startsWith(".")) {
+                junkList.add(root)
+            }
+            return
+        }
+
         for (file in files) {
             val name = file.name.lowercase()
             if (file.isDirectory) {
-                if (file.name == "Android") continue
+                // Evitar carpetas críticas del sistema y apps
+                if (file.name == "Android" || file.name.startsWith(".")) continue
+                
                 if (junkFolderNames.contains(name)) {
                     addFilesRecursive(file, junkList)
-                } else if (!file.isHidden) {
-                    scanForJunkInRoot(file, junkList)
+                } else {
+                    scanForJunkAndEmptyFolders(file, junkList)
                 }
             } else {
                 if (junkExtensions.contains(file.extension.lowercase()) || name.startsWith(".tmp")) {
                     junkList.add(file)
                 }
             }
-            if (junkList.size > 500) break
+            if (junkList.size > 1000) break // Límite de seguridad
         }
     }
 
@@ -120,5 +145,61 @@ class CleaningManager(private val context: Context) {
             if (file.delete()) totalDeleted += size
         }
         return totalDeleted
+    }
+
+    /**
+     * Intenta abrir el diálogo del sistema para borrar el caché de todas las apps.
+     * Retorna un Intent que debe ser lanzado desde una Activity.
+     */
+    fun getGlobalCacheClearIntent(): android.content.Intent? {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            android.content.Intent(StorageManager.ACTION_CLEAR_APP_CACHE)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Abre la configuración de una aplicación específica para que el usuario borre el caché manualmente.
+     */
+    fun openAppSettings(packageName: String) {
+        try {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = android.net.Uri.parse("package:$packageName")
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * Utiliza el truco de StorageManager.allocateBytes como fallback o para activar el recolector.
+     */
+    fun clearAppCaches(): Boolean {
+        return try {
+            val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager ?: return false
+            
+            // Usamos el UUID por defecto del almacenamiento interno
+            val uuid = StorageManager.UUID_DEFAULT
+            
+            // Obtenemos cuántos bytes se pueden liberar (espacio libre + cachés borrables)
+            val allocatableBytes = storageManager.getAllocatableBytes(uuid)
+            
+            android.util.Log.d("FileFix", "Allocatable bytes: $allocatableBytes")
+
+            if (allocatableBytes > 0) {
+                // Solicitamos liberar el 90% de lo asignable para forzar la limpieza de caché de apps
+                val targetBytes = (allocatableBytes * 0.9).toLong()
+                android.util.Log.d("FileFix", "Allocating bytes: $targetBytes")
+                storageManager.allocateBytes(uuid, targetBytes)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FileFix", "Error clearing cache: ${e.message}")
+            false
+        }
     }
 }

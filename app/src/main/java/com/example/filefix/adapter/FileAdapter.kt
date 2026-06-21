@@ -64,6 +64,9 @@ class FileAdapter(
             }
         } else {
             holder.cbSelect.visibility = View.GONE
+            if (file.status == "Installed") {
+                holder.fileSize.text = "${formatFileSize(file.size)} - Toca para limpiar"
+            }
         }
 
         holder.fileIcon.setImageResource(R.drawable.ic_launcher_foreground) 

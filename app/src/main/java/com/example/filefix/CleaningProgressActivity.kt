@@ -52,8 +52,16 @@ class CleaningProgressActivity : AppCompatActivity() {
                 val systemJunk = cleaningManager.findSystemJunk()
                 val systemSize = systemJunk.sumOf { if (it.isDirectory) 0L else it.length() }
                 val systemItems = systemJunk.map { file ->
-                    FileItem(id = file.absolutePath, name = file.name, type = "Sistema", 
-                        size = file.length(), status = "Junk", path = file.absolutePath, isDirectory = file.isDirectory, isChecked = true)
+                    FileItem(
+                        id = file.absolutePath, 
+                        name = file.name, 
+                        type = if (file.isDirectory) "Carpeta vacía" else "Sistema", 
+                        size = if (file.isDirectory) 0L else file.length(), 
+                        status = "Junk", 
+                        path = file.absolutePath, 
+                        isDirectory = file.isDirectory, 
+                        isChecked = true
+                    )
                 }
                 groups.add(JunkGroup("Basura del sistema", systemSize, items = systemJunk, details = systemItems, isChecked = true))
 

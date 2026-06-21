@@ -44,9 +44,27 @@ class ResultsActivity : AppCompatActivity() {
         val btnClean = findViewById<MaterialButton>(R.id.btnClean)
         val btnCancel = findViewById<MaterialButton>(R.id.btnCancel)
 
-        adapter = JunkGroupAdapter(currentGroups) {
-            recalculateTotalSize()
-        }
+        adapter = JunkGroupAdapter(
+            groups = currentGroups,
+            onCacheGlobalAction = {
+                val globalIntent = cleaningManager.getGlobalCacheClearIntent()
+                if (globalIntent != null) {
+                    startActivity(globalIntent)
+                } else {
+                    Toast.makeText(this, "Limpiando caché del sistema...", Toast.LENGTH_SHORT).show()
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        cleaningManager.clearAppCaches()
+                    }
+                }
+            },
+            onCacheItemAction = { packageName ->
+                Toast.makeText(this, "Pulse en 'Borrar Caché' en la siguiente pantalla", Toast.LENGTH_LONG).show()
+                cleaningManager.openAppSettings(packageName)
+            },
+            onTotalSizeChanged = {
+                recalculateTotalSize()
+            }
+        )
         rvList.layoutManager = LinearLayoutManager(this)
         rvList.adapter = adapter
 
@@ -62,7 +80,11 @@ class ResultsActivity : AppCompatActivity() {
 
     private fun recalculateTotalSize() {
         totalSelectedSize = currentGroups.sumOf { group ->
-            group.details.filter { it.isChecked }.sumOf { it.size }
+            if (group.title.contains("Caché", ignoreCase = true)) {
+                0L // El caché ya no es parte de la selección por lotes
+            } else {
+                group.details.filter { it.isChecked }.sumOf { it.size }
+            }
         }
         updateTotalSizeDisplay()
     }
@@ -78,22 +100,42 @@ class ResultsActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             var totalDeleted = 0L
+            val appsToUninstall = mutableListOf<String>()
             
             withContext(Dispatchers.IO) {
                 for (group in currentGroups) {
-                    val selectedFiles = group.details.filter { it.isChecked }.map { File(it.path) }
-                    
-                    if (selectedFiles.isNotEmpty()) {
-                        if (!group.isAppGroup) {
+                    val anyChildChecked = group.details.any { it.isChecked }
+                    if (!group.isChecked && !anyChildChecked) continue
+
+                    if (group.isAppGroup) {
+                        // Recolectar paquetes para desinstalar
+                        appsToUninstall.addAll(group.details.filter { it.isChecked }.map { it.id })
+                    } else if (group.title.contains("Caché", ignoreCase = true)) {
+                        // El caché ahora se maneja mediante botones individuales en el Adapter
+                        continue 
+                    } else {
+                        // Archivos de sistema (Junk)
+                        val selectedFiles = group.details.filter { it.isChecked }.map { File(it.path) }
+                        if (selectedFiles.isNotEmpty()) {
                             totalDeleted += cleaningManager.deleteFiles(selectedFiles)
-                        } else {
-                            totalDeleted += group.details.filter { it.isChecked }.sumOf { it.size }
                         }
                     }
                 }
             }
 
-            Toast.makeText(this@ResultsActivity, "Se liberaron ${formatFileSize(totalDeleted)}", Toast.LENGTH_LONG).show()
+            if (totalDeleted > 0) {
+                Toast.makeText(this@ResultsActivity, "Se liberaron ${formatFileSize(totalDeleted)}", Toast.LENGTH_LONG).show()
+            }
+
+            // Manejar desinstalaciones
+            if (appsToUninstall.isNotEmpty()) {
+                for (packageName in appsToUninstall) {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_DELETE)
+                    intent.data = android.net.Uri.parse("package:$packageName")
+                    startActivity(intent)
+                }
+            }
+
             junkGroupsToDisplay = emptyList()
             finish()
         }
