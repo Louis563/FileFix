@@ -159,4 +159,58 @@ class CleaningManager(private val context: Context) {
         }
         return count
     }
+
+    /**
+     * Intenta abrir el diálogo del sistema para borrar el caché de todas las apps.
+     * Retorna un Intent que debe ser lanzado desde una Activity.
+     */
+    fun getGlobalCacheClearIntent(): android.content.Intent? {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            android.content.Intent(android.os.storage.StorageManager.ACTION_CLEAR_APP_CACHE)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Abre la configuración de una aplicación específica para que el usuario borre el caché manualmente.
+     */
+    fun openAppSettings(packageName: String) {
+        try {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = android.net.Uri.parse("package:$packageName")
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * Utiliza el truco de StorageManager.allocateBytes para forzar al sistema 
+     * a limpiar los cachés de todas las aplicaciones.
+     */
+    fun clearAppCaches(): Boolean {
+        return try {
+            val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? android.os.storage.StorageManager ?: return false
+            
+            // Usamos el UUID por defecto del almacenamiento interno
+            val uuid = android.os.storage.StorageManager.UUID_DEFAULT
+            
+            // Obtenemos cuántos bytes se pueden liberar (espacio libre + cachés borrables)
+            val allocatableBytes = storageManager.getAllocatableBytes(uuid)
+            
+            if (allocatableBytes > 0) {
+                // Solicitamos liberar el 90% de lo asignable para forzar la limpieza de caché de apps
+                val targetBytes = (allocatableBytes * 0.9).toLong()
+                storageManager.allocateBytes(uuid, targetBytes)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
 }

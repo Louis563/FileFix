@@ -61,7 +61,7 @@ class CleaningProgressActivity : AppCompatActivity() {
                     FileItem(id = info.packageName, name = info.appName, type = "Caché", 
                         size = info.cacheSize, status = "Installed", path = info.packageName, isChecked = true)
                 }
-                groups.add(JunkGroup("Caché de archivos basura", totalCacheSize, details = cacheItems, isChecked = true))
+                groups.add(JunkGroup("Caché de archivos basura", totalCacheSize, details = cacheItems.toMutableList(), isChecked = true))
                 
                 // 2. Basura del sistema (CON AGRUPAMIENTO POR CARPETA)
                 val systemJunk = cleaningManager.findSystemJunk()
@@ -116,7 +116,7 @@ class CleaningProgressActivity : AppCompatActivity() {
                     ))
                 }
 
-                groups.add(JunkGroup("Basura del sistema", systemSize, items = systemJunk, details = systemItems.sortedByDescending { it.size }, isChecked = true))
+                groups.add(JunkGroup("Basura del sistema", systemSize, items = systemJunk, details = systemItems.sortedByDescending { it.size }.toMutableList(), isChecked = true))
 
                 // 3. Apps no usadas
                 val unusedDetails = cleaningManager.getUnusedAppsDetails()
@@ -125,7 +125,7 @@ class CleaningProgressActivity : AppCompatActivity() {
                     FileItem(id = info.packageName, name = info.appName, type = "App no usada", 
                         size = info.appSize, status = "Installed", path = info.packageName, isChecked = false)
                 }
-                groups.add(JunkGroup("Desinstala aplicaciones no usadas", totalAppSize, details = appItems, isChecked = false, isAppGroup = true))
+                groups.add(JunkGroup("Desinstala aplicaciones no usadas", totalAppSize, details = appItems.toMutableList(), isChecked = false, isAppGroup = true))
                 
                 groups
             }

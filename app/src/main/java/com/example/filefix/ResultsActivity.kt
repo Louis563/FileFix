@@ -44,14 +44,61 @@ class ResultsActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        refreshCacheIfNeeded()
+    }
+
+    private fun refreshCacheIfNeeded() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val cacheDetails = cleaningManager.getAppsCacheDetails()
+            val newCacheItems = cacheDetails.map { info ->
+                com.example.filefix.model.FileItem(
+                    id = info.packageName,
+                    name = info.appName,
+                    type = "Caché",
+                    size = info.cacheSize,
+                    status = "Installed",
+                    path = info.packageName,
+                    isChecked = true
+                )
+            }
+
+            withContext(Dispatchers.Main) {
+                val cacheGroupIndex = currentGroups.indexOfFirst { it.title.contains("Caché", ignoreCase = true) }
+                if (cacheGroupIndex != -1) {
+                    adapter.updateGroupDetails(cacheGroupIndex, newCacheItems)
+                }
+            }
+        }
+    }
+
     private fun setupViews() {
         val rvList = findViewById<RecyclerView>(R.id.rvJunkList)
         val btnClean = findViewById<MaterialButton>(R.id.btnClean)
         val btnCancel = findViewById<MaterialButton>(R.id.btnCancel)
 
-        adapter = JunkGroupAdapter(currentGroups) {
-            recalculateTotalSize()
-        }
+        adapter = JunkGroupAdapter(
+            groups = currentGroups,
+            onCacheGlobalAction = {
+                val globalIntent = cleaningManager.getGlobalCacheClearIntent()
+                if (globalIntent != null) {
+                    startActivity(globalIntent)
+                } else {
+                    Toast.makeText(this, "Limpiando caché del sistema...", Toast.LENGTH_SHORT).show()
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        cleaningManager.clearAppCaches()
+                    }
+                }
+            },
+            onCacheItemAction = { packageName ->
+                Toast.makeText(this, "Pulse en 'Borrar Caché' en la siguiente pantalla", Toast.LENGTH_LONG).show()
+                cleaningManager.openAppSettings(packageName)
+            },
+            onTotalSizeChanged = {
+                recalculateTotalSize()
+            }
+        )
         rvList.layoutManager = LinearLayoutManager(this)
         rvList.adapter = adapter
 
@@ -67,7 +114,11 @@ class ResultsActivity : AppCompatActivity() {
 
     private fun recalculateTotalSize() {
         totalSelectedSize = currentGroups.sumOf { group ->
-            group.details.filter { it.isChecked }.sumOf { it.size }
+            if (group.title.contains("Caché", ignoreCase = true)) {
+                0L // El caché ya no es parte de la selección por lotes
+            } else {
+                group.details.filter { it.isChecked }.sumOf { it.size }
+            }
         }
         updateTotalSizeDisplay()
     }
@@ -87,9 +138,17 @@ class ResultsActivity : AppCompatActivity() {
             
             withContext(Dispatchers.IO) {
                 for (group in currentGroups) {
+                    val anyChildChecked = group.details.any { it.isChecked }
+                    if (!group.isChecked && !anyChildChecked) continue
+
                     if (group.isAppGroup) {
+                        // Recolectar paquetes para desinstalar
                         appsToUninstall.addAll(group.details.filter { it.isChecked }.map { it.id })
+                    } else if (group.title.contains("Caché", ignoreCase = true)) {
+                        // El caché ahora se maneja mediante botones individuales en el Adapter
+                        continue 
                     } else {
+                        // Archivos de sistema (Junk)
                         val filesToDelete = mutableListOf<File>()
                         group.details.filter { it.isChecked }.forEach { detail ->
                             if (detail.id.startsWith("folder_")) {
@@ -106,7 +165,19 @@ class ResultsActivity : AppCompatActivity() {
                 }
             }
 
-            Toast.makeText(this@ResultsActivity, "Se liberaron ${formatFileSize(totalDeleted)}", Toast.LENGTH_LONG).show()
+            if (totalDeleted > 0) {
+                Toast.makeText(this@ResultsActivity, "Se liberaron ${formatFileSize(totalDeleted)}", Toast.LENGTH_LONG).show()
+            }
+
+            // Manejar desinstalaciones
+            if (appsToUninstall.isNotEmpty()) {
+                for (packageName in appsToUninstall) {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_DELETE)
+                    intent.data = android.net.Uri.parse("package:$packageName")
+                    startActivity(intent)
+                }
+            }
+
             cleanupData()
             finish()
         }

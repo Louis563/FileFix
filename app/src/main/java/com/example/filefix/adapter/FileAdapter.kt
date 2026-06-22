@@ -30,6 +30,7 @@ class FileAdapter(
         val fileName: TextView = view.findViewById(R.id.txtFileName)
         val fileType: TextView = view.findViewById(R.id.txtFileType)
         val fileSize: TextView = view.findViewById(R.id.txtFileSize)
+        val fileHint: TextView = view.findViewById(R.id.txtFileHint)
         val fileIcon: ImageView = view.findViewById(R.id.imgFileIcon)
         val cbSelect: CheckBox = view.findViewById(R.id.cbFileSelect)
         val root: View = view
@@ -56,6 +57,7 @@ class FileAdapter(
 
         if (isSelectionMode) {
             holder.cbSelect.visibility = View.VISIBLE
+            holder.fileHint.visibility = View.GONE
             holder.cbSelect.setOnCheckedChangeListener(null)
             holder.cbSelect.isChecked = file.isChecked
             holder.cbSelect.setOnCheckedChangeListener { _, isChecked ->
@@ -65,7 +67,10 @@ class FileAdapter(
         } else {
             holder.cbSelect.visibility = View.GONE
             if (file.status == "Installed") {
-                holder.fileSize.text = "${formatFileSize(file.size)} - Toca para limpiar"
+                holder.fileHint.visibility = View.VISIBLE
+                holder.fileHint.text = "Toca para limpiar"
+            } else {
+                holder.fileHint.visibility = View.GONE
             }
         }
 
